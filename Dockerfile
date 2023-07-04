@@ -97,7 +97,7 @@ WORKDIR /doorbellian
 COPY --from=BUILD_STAGE /builds/linux/arch/riscv/boot/Image     linux.Image
 # COPY --from=BUILD_STAGE /builds/sun20i-d1-mangopi-mq-pro.dtb    \
 #     sun20i-d1-mangopi-mq-pro.dtb
-COPY --from=DISK_STAGE  /disk/busybox-disk  busybox-disk
+COPY --from=DISK_STAGE  /disk/busybox-disk                      busybox-disk
 
 RUN     apt-get update              \
     &&  apt-get upgrade             \
