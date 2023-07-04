@@ -9,7 +9,9 @@ WORKDIR /sources
 # Fetch stage
 RUN git clone --depth=1 -b v6.4 https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
 RUN git clone --depth=1 -b 1_36_stable git://busybox.net/busybox
-RUN git clone https://github.com/bluenviron/mediamtx
+RUN git clone https://github.com/bluenviron/mediamtx \
+    &&  cd mediamtx \
+    &&  git checkout 91ada9bf07487371f2c0189ab73201ddbaef468e
 
 
 
@@ -18,8 +20,6 @@ FROM ubuntu:22.04 AS BUILD_STAGE
 WORKDIR /builds
 
 COPY --from=CLONE_STAGE /sources/linux      /builds/linux
-COPY --from=CLONE_STAGE /sources/busybox    /builds/busybox
-COPY --from=CLONE_STAGE /sources/mediamtx   /builds/mediamtx
 
 ENV     DEBIAN_FRONTEND=noninteractive
 RUN     apt-get update              \
@@ -51,10 +51,15 @@ RUN     cd linux \
     &&  make ARCH=riscv defconfig \
     &&  make ARCH=riscv -j8
 
+
+COPY --from=CLONE_STAGE /sources/busybox    /builds/busybox
+
 RUN     cd busybox \
     &&  LDFLAGS=--static make defconfig \
     &&  LDFLAGS=--static make -j8
 
+
+COPY --from=CLONE_STAGE /sources/mediamtx   /builds/mediamtx
 
 ENV GOOS=linux
 ENV GOARCH=riscv64
@@ -97,7 +102,7 @@ WORKDIR /doorbellian
 COPY --from=BUILD_STAGE /builds/linux/arch/riscv/boot/Image     linux.Image
 # COPY --from=BUILD_STAGE /builds/sun20i-d1-mangopi-mq-pro.dtb    \
 #     sun20i-d1-mangopi-mq-pro.dtb
-COPY --from=DISK_STAGE  /disk/busybox-disk                      busybox-disk
+COPY --from=DISK_STAGE  /disk/busybox-disk  busybox-disk
 
 RUN     apt-get update              \
     &&  apt-get upgrade             \
