@@ -1,4 +1,4 @@
-FROM ubuntu:20.04 AS CLONE_STAGE
+FROM ubuntu:22.04 AS CLONE_STAGE
 
 RUN     apt-get update          \
     &&  apt-get upgrade         \
@@ -7,13 +7,13 @@ RUN     apt-get update          \
 WORKDIR /sources
 
 # Fetch stage
-RUN git clone -b v6.4 https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
-RUN git clone -b 1_36_stable git://busybox.net/busybox
+RUN git clone --depth=1 -b v6.4 https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
+RUN git clone --depth=1 -b 1_36_stable git://busybox.net/busybox
 RUN git clone https://github.com/bluenviron/mediamtx
 
 
 
-FROM ubuntu:20.04 AS BUILD_STAGE
+FROM ubuntu:22.04 AS BUILD_STAGE
 
 WORKDIR /builds
 
@@ -27,7 +27,7 @@ RUN     apt-get update              \
 RUN     apt-get install -y          \
             build-essential         \
             device-tree-compiler    \
-            gccgo-go                \
+            golang-go               \
             flex                    \
             bison                   \
             gcc-riscv64-linux-gnu   \
@@ -65,7 +65,7 @@ RUN     cd mediamtx \
 
 
 
-FROM ubuntu:20.04 AS DISK_STAGE
+FROM ubuntu:22.04 AS DISK_STAGE
 
 WORKDIR /disk
 COPY --from=BUILD_STAGE     /builds/busybox             busybox
@@ -91,10 +91,10 @@ RUN     chmod +x rootfs/etc/init.d/rcS \
 
 
 
-FROM ubuntu:20.04 AS RUN_STAGE
+FROM ubuntu:22.04 AS RUN_STAGE
 
 WORKDIR /doorbellian
-COPY --from=BUILD_STAGE /sources/linux/arch/riscv/boot/Image      linux.Image
+COPY --from=BUILD_STAGE /builds/linux/arch/riscv/boot/Image     linux.Image
 # COPY --from=BUILD_STAGE /builds/sun20i-d1-mangopi-mq-pro.dtb    \
 #     sun20i-d1-mangopi-mq-pro.dtb
 COPY --from=DISK_STAGE  /disk/busybox-disk  busybox-disk
