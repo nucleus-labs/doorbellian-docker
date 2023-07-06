@@ -51,7 +51,6 @@ if "%target%"=="build" (
 
 if "%target%"=="run" (
     docker run --rm -it ^
-        --mount type=bind,source="%cd%",target=/doorbellian ^
         -p 1935:1935 ^
         -p 8000:8000 ^
         -p 8001:8001 ^
@@ -64,7 +63,6 @@ if "%target%"=="run" (
 if "%target%"=="bar" (
     docker build --tag doorbellian:dev .
     docker run --rm -it ^
-        --mount type=bind,source="%cd%",target=/doorbellian ^
         -p 1935:1935 ^
         -p 8000:8000 ^
         -p 8001:8001 ^
