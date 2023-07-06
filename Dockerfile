@@ -2,15 +2,20 @@ FROM ubuntu:22.04 AS CLONE_STAGE
 
 RUN     apt-get update          \
     &&  apt-get upgrade         \
-    &&  apt-get install -y git
+    &&  apt-get install -y      \
+            git                 \
+            wget
 
 WORKDIR /sources
 
 # Fetch stage
 RUN git clone --depth=1 -b v6.4 https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
 RUN git clone --depth=1 -b 1_36_stable git://busybox.net/busybox
-RUN git clone https://github.com/bluenviron/mediamtx \
-    &&  cd mediamtx \
+RUN wget https://go.dev/dl/go1.20.5.linux-amd64.tar.gz          \
+    &&  tar -xzf go1.20.5.linux-amd64.tar.gz                    \
+    &&  rm go1.20.5.linux-amd64.tar.gz
+RUN git clone https://github.com/bluenviron/mediamtx            \
+    &&  cd mediamtx                                             \
     &&  git checkout 91ada9bf07487371f2c0189ab73201ddbaef468e
 
 
@@ -27,7 +32,6 @@ RUN     apt-get update              \
 RUN     apt-get install -y          \
             build-essential         \
             device-tree-compiler    \
-            golang-go               \
             flex                    \
             bison                   \
             gcc-riscv64-linux-gnu   \
@@ -62,14 +66,18 @@ RUN     mkdir rootfs \
     &&  make -C busybox install CONFIG_PREFIX=../rootfs
 
 
+COPY --from=CLONE_STAGE /sources/go         /usr/local
+ENV PATH=$PATH:/usr/local/go/bin
+
+
 COPY --from=CLONE_STAGE /sources/mediamtx   /builds/mediamtx
 
 ENV GOOS=linux
 ENV GOARCH=riscv64
-ENV CGO_ENABLED=1
+ENV CGO_ENABLED=0
 ENV CC=riscv64-linux-gnu-gcc
-RUN     cd mediamtx \
-    &&  go build -ldflags="-extldflags -static" .
+RUN     cd mediamtx             \
+    &&  go build .
 
 
 

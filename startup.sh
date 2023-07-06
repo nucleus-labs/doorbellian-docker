@@ -8,3 +8,4 @@ ip link set dev eth0 up
 ip route add default via 10.0.2.2 dev eth0
 hash -r
 /bin/mediamtx /etc/mediamtx.yml
+poweroff -f
