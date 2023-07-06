@@ -69,31 +69,28 @@ RUN     cd mediamtx \
     &&  go build -ldflags="-extldflags -static" .
 
 
+RUN     mkdir rootfs \
+    &&  make -C busybox install CONFIG_PREFIX=../rootfs
 
 FROM ubuntu:22.04 AS DISK_STAGE
 
 WORKDIR /disk
 COPY --from=BUILD_STAGE     /builds/busybox             busybox
 COPY --from=BUILD_STAGE     /builds/mediamtx/mediamtx   mediamtx
+COPY --from=BUILD_STAGE     /builds/rootfs              rootfs
 ADD                         mediamtx.yml                mediamtx.yml
 ADD                         startup.sh                  startup.sh
 
 # generate virtual disk and populate with rootfs
 RUN     dd if=/dev/zero of=busybox-disk bs=1M count=1024        \
-    &&  mkfs.ext4 busybox-disk                                  \
-    &&  mkdir -p rootfs                                         \
-    &&  mount busybox-disk rootfs                               \
-    &&  make -C busybox install CONFIG_PREFIX=../rootfs         \
     &&  mkdir -p rootfs/proc rootfs/sys rootfs/dev rootfs/etc   \
     &&  touch rootfs/etc/fstab                                  \
     &&  mkdir -p rootfs/etc/init.d                              \
     &&  cp startup.sh rootfs/etc/init.d/rcS                     \
     &&  cp mediamtx rootfs/bin/mediamtx                         \
-    &&  cp mediamtx.yml rootfs/etc/mediamtx.yml
-
-RUN     chmod +x rootfs/etc/init.d/rcS \
-    &&  umount rootfs
-
+    &&  cp mediamtx.yml rootfs/etc/mediamtx.yml                 \
+    &&  chmod +x rootfs/etc/init.d/rcS                          \
+    &&  mkfs.ext4 busybox-disk -d rootfs                         
 
 
 FROM ubuntu:22.04 AS RUN_STAGE
