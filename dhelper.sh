@@ -40,7 +40,6 @@ fi
 
 if [ "$target" = "run" ] || [ "$target" = "bar" ]; then
     docker run -t doorbellian:dev -it \
-        --mount type=bind,source="$(pwd)",target=/doorbellian \
         -p 1935:1935 \
         -p 8000:8000 \
         -p 8001:8001 \

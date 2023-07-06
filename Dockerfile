@@ -58,6 +58,9 @@ RUN     cd busybox \
     &&  LDFLAGS=--static make defconfig \
     &&  LDFLAGS=--static make -j8
 
+RUN     mkdir rootfs \
+    &&  make -C busybox install CONFIG_PREFIX=../rootfs
+
 
 COPY --from=CLONE_STAGE /sources/mediamtx   /builds/mediamtx
 
@@ -69,8 +72,6 @@ RUN     cd mediamtx \
     &&  go build -ldflags="-extldflags -static" .
 
 
-RUN     mkdir rootfs \
-    &&  make -C busybox install CONFIG_PREFIX=../rootfs
 
 FROM ubuntu:22.04 AS DISK_STAGE
 
@@ -96,16 +97,17 @@ RUN     dd if=/dev/zero of=busybox-disk bs=1M count=1024        \
 FROM ubuntu:22.04 AS RUN_STAGE
 
 WORKDIR /doorbellian
+
+RUN     apt-get update              \
+    &&  apt-get install -y          \
+            qemu-system-riscv64
+
+COPY --from=DISK_STAGE  /disk/busybox-disk                      busybox-disk
 COPY --from=BUILD_STAGE /builds/linux/arch/riscv/boot/Image     linux.Image
 # COPY --from=BUILD_STAGE /builds/sun20i-d1-mangopi-mq-pro.dtb    \
 #     sun20i-d1-mangopi-mq-pro.dtb
-COPY --from=DISK_STAGE  /disk/busybox-disk  busybox-disk
-
-RUN     apt-get update              \
-    &&  apt-get upgrade             \
-    &&  apt-get install -y          \
-            qemu-system-riscv64
 
 ADD doorbellian-qemu.sh doorbellian-qemu.sh
 
 CMD ["/doorbellian/doorbellian-qemu.sh"]
+# CMD ["/bin/bash"]
