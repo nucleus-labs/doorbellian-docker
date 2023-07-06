@@ -46,7 +46,7 @@ exit /b 2
 REM ================================================================================================
 
 if "%target%"=="build" (
-    docker build --tag doorbellian:dev .
+    docker build -t doorbellian:dev .
 )
 
 if "%target%"=="run" (
@@ -61,7 +61,7 @@ if "%target%"=="run" (
 )
 
 if "%target%"=="bar" (
-    docker build --tag doorbellian:dev .
+    docker build -t doorbellian:dev .
     docker run --rm -it ^
         -p 1935:1935 ^
         -p 8000:8000 ^

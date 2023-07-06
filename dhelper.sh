@@ -39,11 +39,12 @@ if [ "$target" = "build" ] || [ "$target" = "bar" ]; then
 fi
 
 if [ "$target" = "run" ] || [ "$target" = "bar" ]; then
-    docker run -t doorbellian:dev -it \
+    docker run -it \
         -p 1935:1935 \
         -p 8000:8000 \
         -p 8001:8001 \
         -p 8554:8554 \
         -p 8888:8888 \
-        -p 8889:8889
+        -p 8889:8889 \
+        doorbellian:dev
 fi
