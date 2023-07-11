@@ -116,6 +116,7 @@ COPY --from=BUILD_STAGE /builds/linux/arch/riscv/boot/Image     linux.Image
 #     sun20i-d1-mangopi-mq-pro.dtb
 
 ADD doorbellian-qemu.sh doorbellian-qemu.sh
+RUN chmod +x doorbellian-qemu.sh
 
 CMD ["/doorbellian/doorbellian-qemu.sh"]
 # CMD ["/bin/bash"]
