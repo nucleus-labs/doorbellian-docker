@@ -1,4 +1,3 @@
-#!/bin/bash
 
 # ================================================================================================
 
@@ -39,7 +38,7 @@ if [ "$target" = "build" ] || [ "$target" = "bar" ]; then
 fi
 
 if [ "$target" = "run" ] || [ "$target" = "bar" ]; then
-    docker run -it \
+    docker run -it --rm --device=/dev/video0 --device=/dev/video1 \
         -p 1935:1935 \
         -p 8000:8000 \
         -p 8001:8001 \
