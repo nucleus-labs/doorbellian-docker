@@ -108,7 +108,9 @@ WORKDIR /doorbellian
 
 RUN     apt-get update              \
     &&  apt-get install -y          \
-            qemu-system-riscv64
+            qemu-system-riscv64     \
+            v4l-utils               \
+            usbutils
 
 COPY --from=DISK_STAGE  /disk/busybox-disk                      busybox-disk
 COPY --from=BUILD_STAGE /builds/linux/arch/riscv/boot/Image     linux.Image
