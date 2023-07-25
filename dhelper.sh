@@ -49,6 +49,22 @@ bus_addrs=$(echo "$lsusb_output" | sed -En "s/Bus ([0-9]{3}) Device ([0-9]{3}): 
 lsusb_output=$(echo "$lsusb_output" | sed -E "s/Bus ([0-9]{3}) Device ([0-9]{3}): ID ($ids)/Bus \x1b[46;30m\1\x1b[0m Device \x1b[42;30m\2\x1b[0m: ID \3/g")
 lsusb_output=$(echo "$lsusb_output" | sed -E "s@($ids)@\o033[45;30m&\o033[0m@g")
 
+# declare -A usb_list
+# for ((i=0; i<${#bus_ids[@]}; i++)); do
+#     usb_list=${ids[$i]}
+# done
+
+# Split variables into arrays based on comma (,)
+IFS=',' read -ra a_array <<< "$bus_ids"
+IFS=',' read -ra b_array <<< "$bus_addrs"
+
+usb_list=()
+for ((i=0; i<${#a_array[@]}; i++)); do
+    # Find the ID from the match
+    echo $i
+    usb_list=(${usb_list} ${a_array[$i]},${b_array[$i]})
+done
+
 
 if [ "$target" = "usb" ]; then
     echo ==============================================================
@@ -64,6 +80,7 @@ if [ "$target" = "usb" ]; then
     echo "Extracted Device IDs:    ${ids//|/,}"
     echo "Extracted USB Bus IDs:   ${bus_ids}"
     echo "Extracted USB Addresses: ${bus_addrs}"
+    echo "Extracted USB List:      ${usb_list[@]}"
 
     echo ==============================================================
 fi
@@ -77,7 +94,7 @@ if [ "$target" = "run" ] || [ "$target" = "bar" ] || [ "$target" = "bash" ]; the
     if [ "$target" = "bash" ]; then
         container_cmd="/bin/bash"
     else
-        container_args="$bus_ids $bus_addrs"
+        container_args="${usb_list[@]}"
     fi
 
     device_args=""

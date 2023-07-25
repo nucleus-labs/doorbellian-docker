@@ -1,4 +1,5 @@
 #!/bin/bash
+set -x
 
 
 # qemu-system-riscv64                             \
@@ -23,12 +24,20 @@ if [ $# -ne 2 ]; then
     exit 1
 fi
 
-host_bus=$1
-host_addr=$2
+usb_list=($@)
 
-# todo: loop over usb arguments and construct a device argument for each pair?
-# @rummik will need to investigate
-usb_devices="-device usb-host,bus=usb.0,hostbus=${host_bus},hostaddr=${host_addr}"
+# loop over usb arguments and construct a device argument for each pair
+usb_devices=""
+for usb_device in ${usb_list[@]}; do
+    # Split the USB device ID into bus and address
+    host_bus=$(echo ${usb_device} | cut -d ',' -f 1)
+    host_addr=$(echo ${usb_device} | cut -d ',' -f 2)
+
+    # Add the USB device to the list of devices
+    usb_devices="${usb_devices} -device usb-host,bus=usb.0,hostbus=${host_bus},hostaddr=${host_addr}"
+done
+
+# usb_devices="-device usb-host,bus=usb.0,hostbus=1,hostaddr=40"
 
 cleanup() {
     # Find USB video or media devices in sysfs
@@ -48,6 +57,7 @@ cleanup() {
 }
 
 trap 'cleanup' SIGTERM
+trap 'cleanup' SIGINT
 
 qemu-system-riscv64 \
     -nographic \
