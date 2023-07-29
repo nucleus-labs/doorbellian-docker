@@ -3,7 +3,7 @@
 
 # ================================================================================================
 
-valid_targets=("build" "run" "bar" "bash" "usb")
+valid_targets=("usb" "build" "bash" "run" "bar" "extract" "bae")
 valid_target_found=0
 container_cmd=./doorbellian-qemu.sh
 target=$1
@@ -61,7 +61,6 @@ IFS=',' read -ra b_array <<< "$bus_addrs"
 usb_list=()
 for ((i=0; i<${#a_array[@]}; i++)); do
     # Find the ID from the match
-    echo $i
     usb_list=(${usb_list} ${a_array[$i]},${b_array[$i]})
 done
 
@@ -72,9 +71,6 @@ if [ "$target" = "usb" ]; then
     echo ==============================================================
     echo -e "$lsusb_output"
     echo ==============================================================
-
-    # Print the matches
-    echo "$matches"
 
     # Print the extracted IDs
     echo "Extracted Device IDs:    ${ids//|/,}"
@@ -91,7 +87,7 @@ fi
 
 if [ "$target" = "run" ] || [ "$target" = "bar" ] || [ "$target" = "bash" ]; then
 
-    if [ "$target" = "bash" ]; then
+    if [[ "$target" = "bash" ]]; then
         container_cmd="/bin/bash"
     else
         container_args="${usb_list[@]}"

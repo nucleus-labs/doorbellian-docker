@@ -1,30 +1,30 @@
-FROM ubuntu:22.04 AS CLONE_STAGE
+FROM ubuntu:22.04 AS FETCH_STAGE
 
 RUN     apt-get update          \
     &&  apt-get upgrade         \
     &&  apt-get install -y      \
             git                 \
-            wget
+            wget                \
+            xz-utils
 
 WORKDIR /sources
 
-# Fetch stage
-RUN git clone --depth=1 -b v6.4 https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
-RUN git clone --depth=1 -b 1_36_stable git://busybox.net/busybox
-RUN wget https://go.dev/dl/go1.20.5.linux-amd64.tar.gz          \
-    &&  tar -xzf go1.20.5.linux-amd64.tar.gz                    \
+RUN     wget http://crosstool-ng.org/download/crosstool-ng/crosstool-ng-1.25.0.tar.xz   \
+    &&  tar -xf crosstool-ng-1.25.0.tar.xz                                              \
+    &&  rm crosstool-ng-1.25.0.tar.xz
+RUN     git clone --depth=1 -b v6.4 https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
+RUN     git clone --depth=1 -b 1_36_stable git://busybox.net/busybox
+RUN     wget https://go.dev/dl/go1.20.5.linux-amd64.tar.gz                              \
+    &&  tar -xzf go1.20.5.linux-amd64.tar.gz                                            \
     &&  rm go1.20.5.linux-amd64.tar.gz
-RUN git clone https://github.com/bluenviron/mediamtx            \
-    &&  cd mediamtx                                             \
+RUN     git clone --depth=1 -b release/6.0 https://git.ffmpeg.org/ffmpeg
+RUN     git clone https://github.com/bluenviron/mediamtx                                \
+    &&  cd mediamtx                                                                     \
     &&  git checkout 91ada9bf07487371f2c0189ab73201ddbaef468e
 
 
 
 FROM ubuntu:22.04 AS BUILD_STAGE
-
-WORKDIR /builds
-
-COPY --from=CLONE_STAGE /sources/linux      /builds/linux
 
 ENV     DEBIAN_FRONTEND=noninteractive
 RUN     apt-get update              \
@@ -34,14 +34,55 @@ RUN     apt-get install -y          \
             device-tree-compiler    \
             flex                    \
             bison                   \
-            gcc-riscv64-linux-gnu   \
             bc                      \
             git                     \
-            ca-certificates         \
-    &&  update-ca-certificates
+	        texinfo		            \
+	        pkg-config		        \
+            help2man                \
+            libtool-bin             \
+            unzip                   \
+            gawk                    \
+            libncurses5-dev         \
+            wget                    \
+            curl                    \
+            rsync                   \
+            python3
 
-ENV LDFLAGS=--static
-ENV CROSS_COMPILE=riscv64-linux-gnu-
+RUN     useradd -m iris
+USER    iris
+RUN     mkdir -p /home/iris/builds
+WORKDIR /home/iris/builds
+
+COPY    --from=FETCH_STAGE  /sources/crosstool-ng-1.25.0    /home/iris/builds/crosstool-ng-1.25.0
+
+USER    root
+
+RUN     cd crosstool-ng-1.25.0              \
+    &&  ./configure --prefix=/opt/cross     \
+    &&  make    			                \
+    &&  make install
+ENV PATH=$PATH:/opt/cross/bin
+
+USER    iris
+
+RUN mkdir ctng
+ADD ct-ng.config ctng/.config
+
+RUN     cd ctng                             \
+    &&  ct-ng source
+RUN     cd ctng                             \
+    &&  ct-ng build
+
+USER    root
+
+
+COPY --from=FETCH_STAGE /sources/linux      /home/iris/builds/linux
+
+ENV PATH="$PATH:/home/iris/x-tools/riscv64-nucleus_labs-linux-gnu/bin"
+ENV CCPREFIX="/home/iris/x-tools/riscv64-nucleus_labs-linux-gnu/bin/riscv64-nucleus_labs-linux-gnu-"
+ENV CROSS_COMPILE=riscv64-nucleus_labs-linux-gnu-
+# ENV LDFLAGS=--static
+
 
 # RUN gcc -E -x assembler-with-cpp -undef \
 #     -Ilinux/include \
@@ -53,29 +94,40 @@ ENV CROSS_COMPILE=riscv64-linux-gnu-
 
 RUN     cd linux \
     &&  make ARCH=riscv defconfig \
-    &&  make ARCH=riscv -j8
+    &&  make ARCH=riscv
 
 
-COPY --from=CLONE_STAGE /sources/busybox    /builds/busybox
+COPY --from=FETCH_STAGE /sources/busybox    /home/iris/builds/busybox
 
 RUN     cd busybox \
-    &&  LDFLAGS=--static make defconfig \
-    &&  LDFLAGS=--static make -j8
+    &&  make defconfig \
+    &&  make
 
 RUN     mkdir rootfs \
     &&  make -C busybox install CONFIG_PREFIX=../rootfs
 
 
-COPY --from=CLONE_STAGE /sources/go         /usr/local
+COPY --from=FETCH_STAGE /sources/go         /usr/local
 ENV PATH=$PATH:/usr/local/go/bin
 
+COPY    --from=FETCH_STAGE  /sources/ffmpeg     /home/iris/builds/ffmpeg
 
-COPY --from=CLONE_STAGE /sources/mediamtx   /builds/mediamtx
+RUN     cd ffmpeg                                           \
+    &&  ./configure                                         \
+            --arch=riscv64                                  \
+            --target-os=linux                               \
+            --cross-prefix=${CCPREFIX}                      \
+            --prefix=/home/iris/builds/ffmpeg/build         \
+    &&  make
+
+# RUN     find / -name ffmpeg -type f
+
+COPY    --from=FETCH_STAGE  /sources/mediamtx   /home/iris/builds/mediamtx
 
 ENV GOOS=linux
 ENV GOARCH=riscv64
-ENV CGO_ENABLED=0
-ENV CC=riscv64-linux-gnu-gcc
+ENV CGO_ENABLED=1
+ENV CC=riscv64-nucleus_labs-linux-gnu-gcc
 RUN     cd mediamtx             \
     &&  go build .
 
@@ -84,11 +136,11 @@ RUN     cd mediamtx             \
 FROM ubuntu:22.04 AS DISK_STAGE
 
 WORKDIR /disk
-COPY --from=BUILD_STAGE     /builds/busybox             busybox
-COPY --from=BUILD_STAGE     /builds/mediamtx/mediamtx   mediamtx
-COPY --from=BUILD_STAGE     /builds/rootfs              rootfs
-ADD                         mediamtx.yml                mediamtx.yml
-ADD                         startup.sh                  startup.sh
+COPY --from=BUILD_STAGE     /home/iris/builds/busybox               busybox
+COPY --from=BUILD_STAGE     /home/iris/builds/mediamtx/mediamtx     mediamtx
+COPY --from=BUILD_STAGE     /home/iris/builds/rootfs                rootfs
+ADD                         mediamtx.yml                            mediamtx.yml
+ADD                         startup.sh                              startup.sh
 
 # generate virtual disk and populate with rootfs
 RUN     dd if=/dev/zero of=busybox-disk bs=1M count=1024        \
@@ -99,7 +151,7 @@ RUN     dd if=/dev/zero of=busybox-disk bs=1M count=1024        \
     &&  cp mediamtx rootfs/bin/mediamtx                         \
     &&  cp mediamtx.yml rootfs/etc/mediamtx.yml                 \
     &&  chmod +x rootfs/etc/init.d/rcS                          \
-    &&  mkfs.ext4 busybox-disk -d rootfs                         
+    &&  mkfs.ext4 busybox-disk -d rootfs
 
 
 FROM ubuntu:22.04 AS RUN_STAGE
@@ -112,8 +164,8 @@ RUN     apt-get update              \
             v4l-utils               \
             usbutils
 
-COPY --from=DISK_STAGE  /disk/busybox-disk                      busybox-disk
-COPY --from=BUILD_STAGE /builds/linux/arch/riscv/boot/Image     linux.Image
+COPY --from=DISK_STAGE  /disk/busybox-disk                                busybox-disk
+COPY --from=BUILD_STAGE /home/iris/builds/linux/arch/riscv/boot/Image     linux.Image
 # COPY --from=BUILD_STAGE /builds/sun20i-d1-mangopi-mq-pro.dtb    \
 #     sun20i-d1-mangopi-mq-pro.dtb
 

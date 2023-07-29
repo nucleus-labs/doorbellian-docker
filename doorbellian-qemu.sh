@@ -1,5 +1,5 @@
 #!/bin/bash
-set -x
+# set -x
 
 
 # qemu-system-riscv64                             \
@@ -19,8 +19,8 @@ set -x
 #     -append "console=ttyS0"                     \
 #     -dtb    ./sun20i-d1-mangopi-mq-pro.dtb
 
-if [ $# -ne 2 ]; then
-    echo "Usage: $0 <usb_hostbus> <usb_hostaddr>"
+if [ $# -eq 0 ]; then
+    echo "Usage: $0 [<usb_hostbus>,<usb_hostaddr> [<usb_hostbus>,<usb_hostaddr>...]]"
     exit 1
 fi
 
@@ -36,28 +36,6 @@ for usb_device in ${usb_list[@]}; do
     # Add the USB device to the list of devices
     usb_devices="${usb_devices} -device usb-host,bus=usb.0,hostbus=${host_bus},hostaddr=${host_addr}"
 done
-
-# usb_devices="-device usb-host,bus=usb.0,hostbus=1,hostaddr=40"
-
-cleanup() {
-    # Find USB video or media devices in sysfs
-    usb_device_paths=$(grep -E 'video[0-9]+|media[0-9]+' /sys/bus/usb/devices/*/modalias | cut -d '/' -f 6)
-
-    for device_path in $usb_device_paths; do
-        # Find the USB device bus and port numbers
-        usb_bus=$(basename $(dirname /sys/bus/usb/devices/${device_path}))
-        usb_port=$(basename $(dirname $(dirname /sys/bus/usb/devices/${device_path})))
-
-        # Unbind the USB device from the virtual USB hub
-        echo 1 | sudo tee /sys/bus/usb/devices/${usb_bus}-${usb_port}/detach
-
-        # Rebind the USB device to the host USB controller
-        echo "${usb_bus}-${usb_port}" | sudo tee /sys/bus/usb/drivers/usb/bind
-    done
-}
-
-trap 'cleanup' SIGTERM
-trap 'cleanup' SIGINT
 
 qemu-system-riscv64 \
     -nographic \
