@@ -30,7 +30,7 @@ done
 # if no valid target matching the supplied target is found, error
 if [ $valid_target_found -eq 0 ]; then
     echo "Error: '$target' is not a valid target."
-    echo "Usage: $0 <$(IFS=/; echo "${valid_targets[*]}")>"
+    echo "Usage: $0 [-f] <$(IFS=/; echo "${valid_targets[*]}")>"
     exit 2
 fi
 
@@ -106,7 +106,7 @@ if [ "$target" = "run" ] || [ "$target" = "bar" ] || [ "$target" = "bash" ]; the
     done
 
     if [ -z "$device_args" ] && [ "$force" = "n" ]; then
-        echo "No video devices found."
+        echo "No video devices found. Run with -f to force run"
         exit 3
     fi
 
@@ -125,7 +125,6 @@ if [ "$target" = "run" ] || [ "$target" = "bar" ] || [ "$target" = "bash" ]; the
         \
         doorbellian:dev $container_cmd $container_args
 
-    
 fi
 
 
