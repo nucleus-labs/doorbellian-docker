@@ -6,6 +6,13 @@
 valid_targets=("usb" "build" "bash" "run" "bar" "extract" "bae")
 valid_target_found=0
 container_cmd=./doorbellian-qemu.sh
+force=n
+
+if [ "$1" = "-f" ]; then
+    force=y
+    shift
+fi
+
 target=$1
 shift
 container_args="$*"
@@ -98,7 +105,7 @@ if [ "$target" = "run" ] || [ "$target" = "bar" ] || [ "$target" = "bash" ]; the
         device_args="$device_args --device=$dev"
     done
 
-    if [[ -z "$device_args" ]]; then
+    if [ -z "$device_args" ] && [ "$force" = "n" ]; then
         echo "No video devices found."
         exit 3
     fi
