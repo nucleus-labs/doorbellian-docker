@@ -4,8 +4,9 @@
   inputs.devshell.url = "github:numtide/devshell";
   inputs.flake-parts.url = "github:hercules-ci/flake-parts";
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/release-23.05";
+  inputs.nucleus.url = "git+file:../nix-flake";
 
-  outputs = inputs@{ self, flake-parts, devshell, nixpkgs }:
+  outputs = inputs@{ self, flake-parts, devshell, nixpkgs, nucleus }:
     flake-parts.lib.mkFlake { inherit inputs; } {
       imports = [
         devshell.flakeModule
@@ -19,9 +20,11 @@
         "x86_64-linux"
       ];
 
-      perSystem = { pkgs, ... }: {
+      perSystem = { pkgs, system, ... }: {
         devshells.default = {
           packages = with pkgs; [
+            automake
+            autoconf
             gnumake
             bc
             binutils
@@ -29,6 +32,7 @@
             elfutils.dev
             file
             flock
+            flex
             gcc
             openssl.dev
             ncurses.dev
@@ -37,6 +41,22 @@
             unzip
             wget
             which
+            help2man
+          ];
+
+          commands = [
+            {
+              category = "tools";
+              name = "ct-ng";
+              package = nucleus.packages.${system}.crosstool-ng;
+            }
+          ];
+        
+          env = [
+            {
+              name = "LD_LIBRARY_PATH";
+              unset = true;
+            }
           ];
         };
 
