@@ -4,9 +4,10 @@
   inputs.devshell.url = "github:numtide/devshell";
   inputs.flake-parts.url = "github:hercules-ci/flake-parts";
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/release-23.05";
-  inputs.nucleus.url = "git+file:../nix-flake";
+  inputs.nucleus.url = "github:nucleus-labs/nix-flake";
+  inputs.dtc.url = "github:MaxTheMooshroom/dtc/dev";
 
-  outputs = inputs@{ self, flake-parts, devshell, nixpkgs, nucleus }:
+  outputs = inputs@{ self, flake-parts, devshell, nixpkgs, nucleus, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
       imports = [
         devshell.flakeModule
@@ -47,8 +48,16 @@
           commands = [
             {
               category = "tools";
-              name = "ct-ng";
-              package = nucleus.packages.${system}.crosstool-ng;
+              package = nucleus.packages.${system}.buildg;
+            }
+            {
+              category = "tools";
+              package = pkgs.lazydocker;
+            }
+            {
+              category = "tools";
+              package = pkgs.libcamera;
+              name = "cam";
             }
           ];
         
