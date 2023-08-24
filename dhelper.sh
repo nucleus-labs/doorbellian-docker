@@ -69,6 +69,7 @@ function d_help () {
 
     local formatted_description=""
     local formatted_description_linecount=0
+
     # (1: description; 2: left-padding, 3: line-width)
     function format_description () {
         [[ -z "$1" ]]           && echo "Error: description is empty!"                  && exit 30
@@ -90,34 +91,23 @@ function d_help () {
         local used_left_padding="$left_padding"
 
         for word in "${words[@]}"; do
-            printf "l: %0.2i: %0.2i\n" "${formatted_description_linecount}" "${#current_line}"
-            # printf "%0.2i" "$(( ${#current_line} + ${#word} + 1 ))"
             if (( ${#used_left_padding} + ${#current_line} + ${#word} + 1 > $line_width )); then
-                # printf "> "
-                # printf "%-15s : ${#used_left_padding} + ${#current_line} + ${#word} + 1 = $(( ${#used_left_padding} + ${#current_line} + ${#word} + 1 )) ; $((${#used_left_padding} + ${#current_line} + ${#word})) > ${line_width}\n" "${word}"
                 (( ${formatted_description_linecount} == 1 )) && used_left_padding=""
                 formatted_description="${formatted_description}${used_left_padding}${current_line}\n"
-
-                # echo "$current_line"
                 current_line="${word}"
                 formatted_description_linecount=$(($formatted_description_linecount+1))
                 used_left_padding="$left_padding"
             else
-                # printf "<="
-                # current_line='$(("$current_line" != "" ? "$current_line $word" : "$word" ))'
                 if [ -z "$current_line" ]; then # true for i=0
                     current_line="$word"
                 else
                     current_line="$current_line $word"
                 fi
-                # printf "%-15s : ${#used_left_padding} + ${#current_line} + ${#word} = $((${#used_left_padding} + ${#current_line} + ${#word})) ; $((${#used_left_padding} + ${#current_line} + ${#word})) > ${line_width}\n" "${word}"
             fi
-            # printf "$line_width\n"
         done
 
         (( ${formatted_description_linecount} == 1 )) && used_left_padding=""
         formatted_description="${formatted_description}${used_left_padding}${current_line}\n"
-        # echo "$current_line"
     }
 
     local max_flag_width=$(   arr_max_length valid_flag_names )
@@ -164,7 +154,7 @@ function d_help () {
     echo ""
     echo "Maintained by Maxine Alexander <max.alexander3721@gmail.com>"
     echo ""
-    echo "----------------------------------------------------------------"
+    echo "--------------------------------------------------------------------------------------"
     echo ""
     local target_spaces=$(printf "%$(($max_width - 3))s" " ")
     echo "    flag | name${target_spaces}| description"
