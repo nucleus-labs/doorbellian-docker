@@ -1,4 +1,9 @@
 
-linux-tina/
+
 include/
 tmp/
+.editorconfig
+build.tina
+flake.nix
+flake.lock
+highlight.css

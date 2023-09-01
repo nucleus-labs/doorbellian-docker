@@ -77,7 +77,8 @@ RUN     apt-get update          \
             libgmp-dev          \
             wget                \
             python2             \
-            file
+            file                \
+            nano
             # help2man            \
             # texinfo             \
             # autoconf            \
@@ -102,6 +103,7 @@ RUN     apt-get update          \
 
 # ENV PATH=$PATH:/usr/local/bin/m4
 RUN     mkdir /builds
+
 COPY                     ./linux-tina        /builds/linux-tina
 #COPY --from=FETCH_STAGE /sources/linux      /home/iris/builds/linux
 
@@ -123,7 +125,7 @@ WORKDIR /builds/linux-tina
 #     sun20i-d1-mangopi-mq-pro.dts.pp
 # CMD ["/bin/bash"]
 
-RUN     git submodule update --init --recursive
+# RUN     git submodule update --init --recursive
 
 #RUN     /bin/bash -c "                          \
 #            source build/envsetup.sh            \
@@ -145,8 +147,8 @@ RUN     git submodule update --init --recursive
 #         "
 
 ADD     build.sh        /builds/linux-tina/build.sh
-RUN     chmod +x build.sh \
-    &&  ./build.sh
+RUN     chmod +x build.sh                   \
+    &&  ./build.sh 2>&1 | tee build.tina
 
 CMD ["/bin/bash"]
 

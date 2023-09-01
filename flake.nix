@@ -43,6 +43,7 @@
             wget
             which
             help2man
+            tree
           ];
 
           commands = [
@@ -58,6 +59,10 @@
               category = "tools";
               package = pkgs.libcamera;
               name = "cam";
+            }
+            {
+              category = "tools";
+              package = pkgs.tree;
             }
           ];
         

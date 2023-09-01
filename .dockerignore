@@ -1,3 +1,15 @@
 
 .git/
 include/
+tmp/
+.editorconfig
+.gitignore
+build.tina
+dhelper.bat
+dhelper.sh
+Dockerfile
+Dockerfile.save
+flake.nix
+flake.lock
+highlight.css
+tina/
