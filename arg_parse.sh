@@ -3,6 +3,7 @@
 declare -A valid_flag_names
 declare -A valid_flag_data
 declare -A valid_flag_priorities
+
 declare -a valid_targets
 declare -a valid_target_descriptions
 

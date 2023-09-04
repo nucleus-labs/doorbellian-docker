@@ -49,4 +49,6 @@ qemu-system-riscv64 \
     ${usb_devices} \
     \
     -device virtio-net-device,netdev=eth0 \
-    -netdev user,id=eth0,hostfwd=tcp::1935-:1935,hostfwd=tcp::8000-:8000,hostfwd=tcp::8001-:8001,hostfwd=tcp::8554-:8554,hostfwd=tcp::8888-:8888,hostfwd=tcp::8889-:8889
+    -netdev user,id=eth0,hostfwd=tcp::1935-:1935,hostfwd=tcp::8000-:8000,hostfwd=tcp::8001-:8001,hostfwd=tcp::8554-:8554,hostfwd=tcp::8888-:8888,hostfwd=tcp::8889-:8889 &
+
+wait $!

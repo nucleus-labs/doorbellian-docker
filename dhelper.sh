@@ -12,11 +12,13 @@ persist=0
 
 # ================================================================================================
 #                                            GLOBALS
+DEPENDENCIES=("cam" "lsusb")
+
 IFS_DEFAULT=$IFS
 arguments=($*)
 
 force=n
-cols=$(tput cols)
+cols=0
 
 # ================================================================================================
 #                                              UTILS
@@ -77,6 +79,14 @@ function arr_pop () {
 
 # ================================================================================================
 #                                             TASKS
+function init () {
+    cols=$(tput cols)
+}
+
+function validate_dependencies () {
+    return
+}
+
 function usb_init () {
     # Store video devices
     cam_output=$(cam -l 2>/dev/null)
@@ -305,7 +315,7 @@ function target_debug () {
 # ================================================================================================
 #                                               MAIN
 function main () {
-    # TODO: validate dependencies
+    validate_dependencies
     validate_flags
     execute_flags
     validate_target
