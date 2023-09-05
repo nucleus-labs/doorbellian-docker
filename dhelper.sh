@@ -18,7 +18,6 @@ IFS_DEFAULT=$IFS
 arguments=($*)
 
 force=n
-cols=0
 
 # ================================================================================================
 #                                              UTILS
@@ -80,7 +79,7 @@ function arr_pop () {
 # ================================================================================================
 #                                             TASKS
 function init () {
-    cols=$(tput cols)
+    return
 }
 
 function validate_dependencies () {
@@ -316,6 +315,7 @@ function target_debug () {
 #                                               MAIN
 function main () {
     validate_dependencies
+    init
     validate_flags
     execute_flags
     validate_target

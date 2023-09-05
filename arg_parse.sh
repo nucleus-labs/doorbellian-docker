@@ -13,7 +13,7 @@ declare -a valid_target_descriptions
 function add_flag () {
     local flag="$1"
     local name="$2"
-    local description="$3"
+    local description="'$3'"
     local priority=$4
     local arguments="($5)"
     local arg_descriptions="($6)"
@@ -25,7 +25,7 @@ function add_flag () {
     [[ "$arg_descriptions"  == *'|'* ]] && caller && echo "[ERROR]: Argument descriptions cannot contain '|'"                       && exit 64
 
     [[ "${flag}" != "-" ]] && valid_flag_names["${flag}"]="${name}"
-    valid_flag_data["${flag}"]="description=${description}|arguments=${arguments}|arg_descriptions=${arg_descriptions}"
+    valid_flag_data["${name}"]="description=${description}|arguments=${arguments}|arg_descriptions=${arg_descriptions}"
     valid_flag_priorities["${priority}"]=${priority}
 }
 
@@ -132,12 +132,16 @@ function execute_flags () {
 }
 
 function print_help () {
-    echo "[ERROR]: print_help is currently broken!"
-    exit 0
+    local cols=$(tput cols)
 
-    # needs to be adapted to the changes made to the over-arching script
-    # TODO: Use renamed/restructured arrays
     # TODO: implement usage of flag data
+
+    local flags=(${!valid_flag_names[@]})
+    local flag_names=()
+    for flag in ${flags[@]}; do
+        local flag_name="${valid_flag_names[${flag}]}"
+        flag_names+=("${flag_name}")
+    done
 
     local usage_flags=""
     local usage_targets=""
@@ -185,14 +189,15 @@ function print_help () {
         formatted_description="${formatted_description}${used_left_padding}${current_line}\n"
     }
 
-    local max_flag_width=$(   arr_max_length valid_flag_data    \-A )
-    local max_target_width=$( arr_max_length valid_targets      \-a )
+    local max_flag_width=$(   arr_max_length flag_names     \-A )
+    local max_target_width=$( arr_max_length valid_targets  \-a )
 
     local max_width=$(($max_flag_width > $max_target_width ? $max_flag_width : $max_target_width ))
 
-    for ((i = 0; i < ${#valid_flags[@]}; i++)); do
-        local flag="${valid_flags[i]}"
-        local flag_name="${valid_flag_names[i]}"
+    for ((i = 0; i < ${#flags[@]}; i++)); do
+        local flag="${flags[$i]}"
+        local flag_name="${flag_names[$i]}"
+        local flag_data="${valid_flag_data[$flag_name]}"
 
         local flag_padding=$((${#flag_name} <= $max_width ? $max_width - ${#flag_name} + 1 : 1))
         local flag_spaces=$(printf "%${flag_padding}s")
@@ -200,7 +205,18 @@ function print_help () {
         local line="    -${flag}   | --${flag_name}${flag_spaces}| "
         [[ ${flag} == "-" ]] && line="           --${flag_name}${flag_spaces}| "
 
-        format_description "${valid_flag_descriptions[i]}" ${#line} $((${cols} - 4))
+        local flag_data_parts=
+        local description=
+        local arguments=
+        local arg_descriptions=
+
+        IFS='|' read -ra flag_data_parts <<< "${flag_data}"
+
+        for part in "${flag_data_parts[@]}"; do
+            eval "$part"
+        done
+
+        format_description "${description}" ${#line} $((${cols} - 4))
 
         usage_flags="${usage_flags}${line}${formatted_description}\n"
     done
@@ -208,7 +224,7 @@ function print_help () {
     format_description=""
 
     for ((i = 0; i < ${#valid_targets[@]}; i++)); do
-        local target="${valid_targets[i]}"
+        local target="${valid_targets[$i]}"
 
         local target_padding=$((${#target} < $max_width ? $max_width - ${#target} + 10 : 1))
         local target_spaces=$(printf "%${target_padding}s" " ")
