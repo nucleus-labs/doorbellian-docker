@@ -146,7 +146,7 @@ WORKDIR /builds/linux-tina
 #                 &&  exit 1                                        \
 #         "
 
-ADD     build.sh        /builds/linux-tina/build.sh
+ADD     deps/build/build-tina.sh    /builds/linux-tina/build.sh
 RUN     chmod +x build.sh                   \
     &&  ./build.sh 2>&1 | tee build.tina
 

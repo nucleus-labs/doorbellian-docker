@@ -236,6 +236,10 @@ webrtcICETCPMuxAddress:
 # The settings under the path "all" are applied to all paths that do not match
 # another entry.
 paths:
+  cam:
+    runOnInit: ffmpeg -f dshow -i video="USB2.0 HD UVC WebCam" -pix_fmt yuv420p -c:v libx264 -preset ultrafast -b:v 600k -f rtsp rtsp://localhost:$RTSP_PORT/$MTX_PATH
+    runOnInitRestart: yes
+
   all:
     # Source of the stream. This can be:
     # * publisher -> the stream is published by a RTSP or RTMP client

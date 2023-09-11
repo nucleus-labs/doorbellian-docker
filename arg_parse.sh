@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+# ================================================================================================
+#                                            GLOBALS
+
 declare -A valid_flag_names
 declare -A valid_flag_data
 declare -A valid_flag_priorities
@@ -7,7 +10,79 @@ declare -A valid_flag_priorities
 declare -a valid_targets
 declare -a valid_target_descriptions
 
+declare -a arguments
+arguments+=($*)
 
+# ================================================================================================
+#                                              UTILS
+# (1: file; 2: line number; 3: error message; 4: exit code)
+function error () {
+    local file="$1"
+    local line_number="$2"
+    local message="$3"
+    local code="${4:-1}"
+    [[ -n "$message" ]] && echo "[ERROR][${file}][${line_number}][${code}]: ${message}" || echo "[ERROR][${file}][${line_number}][${code}]"
+    exit ${code}
+}
+trap 'error ${BASH_SOURCE[0]} ${LINENO}' ERR
+
+# (1: array name (global); 2: array type (-a/-A))
+function arr_max_length () {
+    [[ -z "$1" ]]           && caller && echo "[ERROR]: Array name is empty!"                       && exit 70
+    local arr_declare="$(declare -p "$1" 2>/dev/null)"
+    [[ -z "${!1+x}" || "${arr_declare}" != "declare"* ]]                                            \
+                            && caller && echo "[ERROR]: Variable '$1' does not exist!"              && exit 71
+    [[ ! -v "$1"    || "${arr_declare}" != "declare -a"* && "${arr_declare}" != "declare -A"* ]]    \
+                            && caller && echo "[ERROR]: Variable '$1' is not an array!"             && exit 72
+    [[ ! -z "$3" && "$3" != "-a" && "$3" != "-A" ]]                                                 \
+                            && caller && echo "[ERROR]: Array type '$3' is not a valid type!"       && exit 73
+    local -n arr="$1"
+    local max_length=${arr[0]}
+
+    for item in "${arr[@]}"; do
+        max_length=$(( ${#item} > ${max_length} ? ${#item} : ${max_length} ))
+    done
+
+    echo ${max_length}
+}
+
+# (1: array name (global); 2: array type (-a/-A))
+function arr_max_value () {
+    [[ -z "$1" ]]           && caller && echo "[ERROR]: Array name is empty!"                       && exit 80
+    local arr_declare="$(declare -p "$1" 2>/dev/null)"
+    [[ -z "${!1+x}" || "${arr_declare}" != "declare"* ]]                                            \
+                            && caller && echo "[ERROR]: Variable '$1' does not exist!"              && exit 81
+    [[ ! -v "$1"    || "${arr_declare}" != "declare -a"* && "${arr_declare}" != "declare -A"* ]]    \
+                            && caller && echo "[ERROR]: Variable '$1' is not an array!"             && exit 82
+    [[ ! -z "$3" && "$3" != "-a" && "$3" != "-A" ]]                                                 \
+                            && caller && echo "[ERROR]: Array type '$3' is not a valid type!"       && exit 83
+    local -n arr="$1"
+    local max_value=${arr[0]}
+
+    for item in "${arr[@]}"; do
+        [[ ! $2 =~ ^[0-9]+$ ]]  && caller && echo "[ERROR]: value '$2' is not a valid number!"      && exit 84
+        max_value=$(( ${item} > ${max_value} ? ${item} : ${max_value} ))
+    done
+    echo ${max_value}
+}
+
+# (1: array name (global); 2: index to pop; 3: array type (-a/-A))
+function arr_pop () {
+    [[ -z "$1" ]]           && caller && echo "[ERROR]: Array name is empty!"                       && exit 90
+    local arr_declare="$(declare -p "$1" 2>/dev/null)"
+    [[ -z "${!1+x}" || "${arr_declare}" != "declare"* ]]                                            \
+                            && caller && echo "[ERROR]: Variable '$1' does not exist!"              && exit 81
+    [[ ! -v "$1"    || "${arr_declare}" != "declare -a"* && "${arr_declare}" != "declare -A"* ]]    \
+                            && caller && echo "[ERROR]: Variable '$1' is not an array!"             && exit 82
+    [[ ! $2 =~ ^[0-9]+$ ]]  && caller && echo "[ERROR]: Index '$2' is not a valid number!"          && exit 93
+    [[ ! -v $1[$2] ]]       && caller && echo "[ERROR]: Array element at index $2 does not exist!"  && exit 94
+    [[ ! -z "$3" && "$3" != "-a" && "$3" != "-A" ]]                                                 \
+                            && caller && echo "[ERROR]: Array type '$3' is not a valid type!"       && exit 95
+    eval "$1=(\${$1[@]:0:$2} \${$1[@]:$2+1})"
+}
+
+# ================================================================================================
+#                                       CORE FUNCTIONALITY
 #  1: flag (single character); 2: flag name; 3: flag description;
 #  4: flag priority; 5: flag arguments (semicolon delimiter); 6: flag argument descriptions (semicolon delimiter)
 function add_flag () {
@@ -24,7 +99,7 @@ function add_flag () {
     [[ "$arguments"         == *'|'* ]] && caller && echo "[ERROR]: Arguments cannot contain '|'"                                   && exit 63
     [[ "$arg_descriptions"  == *'|'* ]] && caller && echo "[ERROR]: Argument descriptions cannot contain '|'"                       && exit 64
 
-    [[ "${flag}" != "-" ]] && valid_flag_names["${flag}"]="${name}"
+    [[ "${flag}" == "-" ]] && valid_flag_names["-"]+="${name};" || valid_flag_names["${flag}"]="${name}"
     valid_flag_data["${name}"]="description=${description}|arguments=${arguments}|arg_descriptions=${arg_descriptions}"
     valid_flag_priorities["${priority}"]=${priority}
 }
@@ -43,14 +118,14 @@ function validate_flag () {
 
     # check if the supplied flag is valid
     for value in "${!valid_flag_names[@]}"; do
-        if [[ "$value" == "$flag" ]]; then
+        if [[ "$flag" != "-" && "$value" == "$flag" ]]; then
             valid_flag_found=1
             break
         fi
     done
 
     # if no valid flag matching the supplied flag is found, error
-    if [ $valid_flag_found -eq 0 ]; then
+    if [[ $valid_flag_found -eq 0 ]]; then
         caller && echo "[ERROR]: '-$flag' is not a valid flag."
         print_help
         exit 1
@@ -64,17 +139,25 @@ function validate_flag_name () {
     local flag_name="$1"
     local valid_flag_name_found=0
 
+    local no_short_names=
+    local no_short_names_text="${valid_flag_names[-]}"
+    unset valid_flag_names[-]
+    IFS=';' read -ra no_short_names <<< "${no_short_names_text}"
+
     # check if the supplied flag is valid
-    for value in "${valid_flag_data[@]}"; do
-        if [ "$value" = "$flag_name" ]; then
+    for value in "${no_short_names[@]}"; do
+        echo "${value}"
+        if [[ "${value}" = "${flag_name}" ]]; then
             valid_flag_name_found=1
             break
         fi
     done
 
+    valid_flag_names[-]="${no_short_names_text}"
+
     # if no valid flag matching the supplied flag is found, error
-    if [ $valid_flag_name_found -eq 0 ]; then
-        caller && echo "[ERROR]: '--$flag_name' is not a valid flag."
+    if [[ $valid_flag_name_found -eq 0 ]]; then
+        caller && echo "[ERROR]: '--$flag_name' is not a valid flag name."
         print_help
         exit 1
     else
@@ -111,14 +194,14 @@ function validate_target () {
 
     # check if the supplied target is valid
     for value in "${valid_targets[@]}"; do
-        if [ "$target" = "$value" ]; then
+        if [[ "$target" = "$value" ]]; then
             valid_target_found=1
             break
         fi
     done
 
     # if no valid target matching the supplied target is found, error
-    if [ $valid_target_found -eq 0 ]; then
+    if [[ $valid_target_found -eq 0 ]]; then
         caller && echo "[ERROR]: '$target' is not a valid target."
         print_help
         exit 2
@@ -137,11 +220,7 @@ function print_help () {
     # TODO: implement usage of flag data
 
     local flags=(${!valid_flag_names[@]})
-    local flag_names=()
-    for flag in ${flags[@]}; do
-        local flag_name="${valid_flag_names[${flag}]}"
-        flag_names+=("${flag_name}")
-    done
+    local flag_names=(${valid_flag_names[@]})
 
     local usage_flags=""
     local usage_targets=""
@@ -163,9 +242,7 @@ function print_help () {
 
         local current_line=""
 
-        IFS=" "
-        read -ra words <<< "$description"
-        IFS=$IFS_DEFAULT
+        IFS=' ' read -ra words <<< "$description"
 
         local used_left_padding="$left_padding"
 
@@ -177,7 +254,7 @@ function print_help () {
                 formatted_description_linecount=$(($formatted_description_linecount+1))
                 used_left_padding="$left_padding"
             else
-                if [ -z "$current_line" ]; then # true for i=0
+                if [[ -z "$current_line" ]]; then # true for i=0
                     current_line="$word"
                 else
                     current_line="$current_line $word"
@@ -189,8 +266,29 @@ function print_help () {
         formatted_description="${formatted_description}${used_left_padding}${current_line}\n"
     }
 
-    local max_flag_width=$(   arr_max_length flag_names     \-A )
-    local max_target_width=$( arr_max_length valid_targets  \-a )
+    # flag_arg_widths=()
+    # for flag_data in "${valid_flag_data[@]}"; do
+    #     local flag_data_parts=
+    #     local description=
+    #     local arguments=
+    #     local arg_descriptions=
+
+    #     IFS='|' read -ra flag_data_parts <<< "${flag_data}"
+
+    #     for part in "${flag_data_parts[@]}"; do
+    #         eval "$part"
+    #     done
+
+    #     for arg in "${arguments[@]}"; do
+    #         max_flag_arg_width+=(${#arg})
+    #     done
+    # done
+
+
+
+    local max_flag_width=$(     arr_max_length flag_names     \-A )
+    # local max_flag_arg_width=$( arr_max_value flag_arg_widths )
+    local max_target_width=$(   arr_max_length valid_targets  \-a )
 
     local max_width=$(($max_flag_width > $max_target_width ? $max_flag_width : $max_target_width ))
 
@@ -203,6 +301,7 @@ function print_help () {
         local flag_spaces=$(printf "%${flag_padding}s")
 
         local line="    -${flag}   | --${flag_name}${flag_spaces}| "
+        echo "${flag}"
         [[ ${flag} == "-" ]] && line="           --${flag_name}${flag_spaces}| "
 
         local flag_data_parts=
@@ -218,7 +317,14 @@ function print_help () {
 
         format_description "${description}" ${#line} $((${cols} - 4))
 
-        usage_flags="${usage_flags}${line}${formatted_description}\n"
+        usage_flags+="${line}${formatted_description}\n"
+
+        # for ((i = 0; i < ${#arguments}; i++)); do
+        #     local argument="${arguments[$i]}"
+        #     local arg_description=""
+        #     line="$(printf "%11s") ${argument}"
+
+        # done
     done
 
     format_description=""
@@ -255,7 +361,6 @@ function print_help () {
     echo "    target${target_spaces}| description"
     echo "    ${short_line}"
     echo -e   "$usage_targets"
-    echo ""
 }
 
 add_flag "h" "help" "prints this menu" 0

@@ -5,81 +5,37 @@ source arg_parse.sh
 
 # ================================================================================================
 #                                            SETTINGS
+debug_mode=0
 dockerfile="Dockerfile.default"
+JOBS=$(nproc --all)
 container_id=
+created_container=
 attach=0
 persist=0
+auto_select=0
+image_tag="dev"
 
 # ================================================================================================
 #                                            GLOBALS
-DEPENDENCIES=("cam" "lsusb")
-
-IFS_DEFAULT=$IFS
-arguments=($*)
+DEPENDENCIES=("tput" "cam" "lsusb" "docker" "buildg")
 
 force=n
 
-# ================================================================================================
-#                                              UTILS
-# (1: array name (global); 2: array type (-a/-A))
-function arr_max_length () {
-    [[ -z "$1" ]]           && caller && echo "[ERROR]: Array name is empty!"                       && exit 70
-    local arr_declare="$(declare -p "$1" 2>/dev/null)"
-    [[ -z "${!1+x}" || "${arr_declare}" != "declare"* ]]                                            \
-                            && caller && echo "[ERROR]: Variable '$1' does not exist!"              && exit 81
-    [[ ! -v "$1"    || "${arr_declare}" != "declare -a"* && "${arr_declare}" != "declare -A"* ]]    \
-                            && caller && echo "[ERROR]: Variable '$1' is not an array!"             && exit 82
-    [[ ! -z "$3" && "$3" != "-a" && "$3" != "-A" ]]                                                 \
-                            && caller && echo "[ERROR]: Array type '$3' is not a valid type!"       && exit 83
-    local -n arr="$1"
-    local max_length=${arr[0]}
-
-    for item in "${arr[@]}"; do
-        max_length=$(( ${#item} > ${max_length} ? ${#item} : ${max_length} ))
-    done
-    echo ${max_length}
-}
-
-# (1: array name (global); 2: array type (-a/-A))
-function arr_max_value () {
-    [[ -z "$1" ]]           && caller && echo "[ERROR]: Array name is empty!"                       && exit 80
-    local arr_declare="$(declare -p "$1" 2>/dev/null)"
-    [[ -z "${!1+x}" || "${arr_declare}" != "declare"* ]]                                            \
-                            && caller && echo "[ERROR]: Variable '$1' does not exist!"              && exit 81
-    [[ ! -v "$1"    || "${arr_declare}" != "declare -a"* && "${arr_declare}" != "declare -A"* ]]    \
-                            && caller && echo "[ERROR]: Variable '$1' is not an array!"             && exit 82
-    [[ ! -z "$3" && "$3" != "-a" && "$3" != "-A" ]]                                                 \
-                            && caller && echo "[ERROR]: Array type '$3' is not a valid type!"       && exit 83
-    local -n arr="$1"
-    local max_value=${arr[0]}
-
-    for item in "${arr[@]}"; do
-        [[ ! $2 =~ ^[0-9]+$ ]]  && caller && echo "[ERROR]: value '$2' is not a valid number!"      && exit 84
-        max_value=$(( ${item} > ${max_value} ? ${item} : ${max_value} ))
-    done
-    echo ${max_value}
-}
-
-# (1: array name (global); 2: index to pop; 3: array type (-a/-A))
-function arr_pop () {
-    [[ -z "$1" ]]           && caller && echo "[ERROR]: Array name is empty!"                       && exit 90
-    local arr_declare="$(declare -p "$1" 2>/dev/null)"
-    [[ -z "${!1+x}" || "${arr_declare}" != "declare"* ]]                                            \
-                            && caller && echo "[ERROR]: Variable '$1' does not exist!"              && exit 81
-    [[ ! -v "$1"    || "${arr_declare}" != "declare -a"* && "${arr_declare}" != "declare -A"* ]]    \
-                            && caller && echo "[ERROR]: Variable '$1' is not an array!"             && exit 82
-    [[ ! $2 =~ ^[0-9]+$ ]]  && caller && echo "[ERROR]: Index '$2' is not a valid number!"          && exit 93
-    [[ ! -v $1[$2] ]]       && caller && echo "[ERROR]: Array element at index $2 does not exist!"  && exit 94
-    [[ ! -z "$3" && "$3" != "-a" && "$3" != "-A" ]]                                                 \
-                            && caller && echo "[ERROR]: Array type '$3' is not a valid type!"       && exit 95
-    eval "$1=(\${$1[@]:0:$2} \${$1[@]:$2+1})"
-}
-
+selected_item_index=
 
 # ================================================================================================
 #                                             TASKS
+# (1: message to print)
+function debug () {
+    [[ ${debug_mode} -eq 0 ]] && echo $1
+}
+
 function init () {
     return
+}
+
+function cleanup () {
+    [[ ${created_container} -eq 1 && ${persist} -eq 0 ]] && docker rm -v ${container_id} 2>&1 >/dev/null
 }
 
 function validate_dependencies () {
@@ -105,15 +61,44 @@ function usb_init () {
     lsusb_output=$(echo "$lsusb_output" | sed -E "s/Bus ([0-9]{3}) Device ([0-9]{3}): ID ($ids)/Bus \x1b[46;30m\1\x1b[0m Device \x1b[42;30m\2\x1b[0m: ID \3/g")
 
     # Split variables into arrays based on comma (,)
-    IFS=',' read -ra a_array <<< "$bus_ids"
-    IFS=',' read -ra b_array <<< "$bus_addrs"
+    IFS=',' read -ra id_list <<< "$bus_ids"
+    IFS=',' read -ra addr_list <<< "$bus_addrs"
 
     usb_list=()
-    for ((i=0; i<${#a_array[@]}; i++)); do
+    for ((i=0; i<${#id_list[@]}; i++)); do
         # Find the ID from the match
-        local addition=(${a_array[$i]},${b_array[$i]})
+        local addition=(${id_list[$i]},${addr_list[$i]})
         usb_list+=(${addition})
     done
+}
+
+# (1: default for auto-select; *: list items)
+function select_index_from_list () {
+    local default_choice=0
+    [[ ! -z $1 || $1 -eq -1 ]] && default_choice=$1
+    [[ ! $1 =~ ^[0-9]+$ ]] \
+            && error ${BASH_SOURCE[0]} ${LINENO} "Default index is invalid!"                90
+    [[ ${auto_select} -eq 1 ]] \
+            && echo "Selecting [${list[0]}]" && return ${default_choice}
+    shift
+    local list=($*)
+    echo "$(declare -p "list" 2>/dev/null)"
+    eval "$(declare -p "list" 2>/dev/null)"
+    [[ ${#list} -eq 0 ]] \
+            && error ${BASH_SOURCE[0]} ${LINENO} "No values provided!"                      91
+    IFS=',' echo "items: (${list[@]})"
+    for ((i = 0; i <= ${#list}; i++)); do
+        local item="${list[i]}"
+        printf "%0.2i: ${item}\n" $i
+    done
+
+    read -p "Choice? " selected_index
+
+    [[ ! ${selected_index} =~ ^[0-9]+$ ]] \
+            && error ${BASH_SOURCE[0]} ${LINENO} "Selected choice is not a valid number"    92
+    [[ ${selected_index} -lt 0 || ${selected_index} -gt ${#list} ]] \
+            && error ${BASH_SOURCE[0]} ${LINENO} "Selected choice is not a valid index"     93
+    selected_item_index=${selected_index}
 }
 
 # (1: container command; 2: container command arguments)
@@ -127,7 +112,7 @@ function run_container () {
         device_args="$device_args --device=$dev"
     done
 
-    if [ -z "$device_args" ] && [ "$force" = "n" ]; then
+    if [[ -z "$device_args" && "$force" == "n" ]]; then
         echo "No video devices found. Run with -f to force run"
         exit 3
     fi
@@ -165,6 +150,12 @@ function exec_container () {
 
 # ================================================================================================
 #                                              FLAGS
+add_flag "d" "debug" "enable debug mode (prints extra info)" 0
+function flag_d () {
+    debug_mode=1
+    debug "Enabling Debug Mode"
+}
+
 add_flag "f" "force" "run even if no camera devices are found" 1
 function flag_f () {
     echo forcing...
@@ -180,24 +171,49 @@ function flag_p () {
 add_flag "a" "attach" "attach to existing persistent container if one exists" 2
 function flag_a () {
     attach=1
-    echo "Attaching to container..."
+    if [[ -z "${container_id}" ]]; then
+        local container_ids=($(docker ps -a --filter 'ancestor=doorbellian:dev' --format '{{.ID}}' 2>/dev/null))
+        if [[ ${#container_ids} -eq 0 ]]; then
+            created_container=1
+            echo "Creating container..."
+            container_id="$(docker ps -a --filter 'ancestor=doorbellian:dev' --format '{{.ID}}' 2>/dev/null)"
+        elif [[ ${#container_ids} -eq 1 ]]; then
+            container_id="$container_ids"
+        else
+            select_index_from_list 0 ${container_ids[@]}
+            container_id="${container_ids[selected_item_index]}"
+        fi
+    fi
+    echo "Attaching to container [${container_id:0:8}]..."
 }
 
-add_flag "u" "update" "updates a container by copying the contents of 'deps/' into a currently running container before executing the target ; implicitly uses the -a flag" 2
+# add_flag "u" "update" "updates a container by copying the contents of 'deps/' into a currently running container before executing the target ; implicitly uses the -a flag" 2
 function flag_u () {
     flag_a
     local container_ids=
     return
 }
 
-add_flag "-" "dockerfile" "sets the dockerfile to use" 1 "dockerfile" ""
+add_flag "-" "auto" "automatically selects an existing container to use (the first one found) or creates a new container" 1
+function flag_name_auto () {
+    auto_select=1
+}
+
+add_flag "-" "jobs" "sets the number of jobs/threads to use" 1
+function flag_name_jobs () {
+    JOBS=${arguments[0]}
+    [[ ! ${JOBS} =~ ^[0-9]+$ ]] && caller && echo "[ERROR]: JOBS value '${JOBS}' is not a valid number!" && exit 15
+    arr_pop arguments 0
+}
+
+add_flag "-" "dockerfile" "sets the dockerfile to use" 1 "dockerfile" "the dockerfile to use"
 function flag_name_dockerfile () {
     dockerfile="${arguments[0]}"
     arr_pop arguments 0
     echo "using dockerfile '${dockerfile}'"
 }
 
-add_flag "-" "container" "the id for the container that should be used" 1 "container_id" ""
+add_flag "-" "container" "the id for the container that should be used" 1 "container_id" "the id of the docker container that should be used"
 function flag_name_container () {
     container_id="${arguments[0]}"
     return
@@ -229,7 +245,7 @@ function target_clean () {
     echo cleaning...
     docker ps -a --filter "status=created" --format "{{.ID}}" | xargs -r docker rm
     docker ps -a --filter "status=exited" --format "{{.ID}}" | xargs -r docker rm
-    if [ -n "$(docker images -q doorbellian:dev 2> /dev/null)" ]; then
+    if [[ -n "$(docker images -q doorbellian:dev 2> /dev/null)" ]]; then
         docker image rm --force doorbellian:dev
     fi
     docker images -f "dangling=true" --format "{{.ID}}" | xargs -r docker rmi
@@ -240,25 +256,31 @@ add_target "build" "build the docker image"
 function target_build () {
     export DOCKER_BUILDKIT=0
     # --rm=false
-    docker build --progress=plain -f "${dockerfile}" \
+    docker build --build-arg JOBS=${JOBS} --progress=plain -f "${dockerfile}" \
         -t doorbellian:dev .
+    return $?
 }
 
 add_target "extract" "extract logs from the constructed image"
 function target_extract () {
-    if [ -n "$(docker images -q doorbellian:dev 2> /dev/null)" ]; then
-        local extracts=("build.log" ${arguments[@]})
+    if [[ -n "$(docker images -q doorbellian:dev 2> /dev/null)" ]]; then
+        local extracts=(${arguments[@]})
         local container_id=($(docker ps -a --filter 'ancestor=doorbellian:dev' --format '{{.ID}}' 2>/dev/null))
         local created=0
-        IFS=','
-        [[ ${#container_id[@]} -gt 1 ]] && caller && echo "[ERROR]: too many available containers: (${container_id[*]})" && exit 20
-        IFS=$IFS_DEFAULT
+
+        [[ ${#container_id[@]} -gt 1 ]] && IFS=',' echo "[ERROR]: too many available containers: (${container_id[*]})" && exit 20
         [[ ${#container_id[@]} -eq 0 ]] && created=1 && container_id=($(docker create doorbellian:dev))
-        for extract in "${extracts[@]}"; do
-            echo "Extracted '${container_id:0:8}:${extract}' to 'tmp/${extract}'"
-            docker cp "${container_id}:/builds/linux/${extract}" "tmp/${extract}" 2>&1 >/dev/null
+
+        for extracted in "${extracts[@]}"; do
+            IFS=';' read -ra extracted_parts <<< "${extracted}"
+            local _from="${extracted_parts[0]}"
+            local _to="${extracted_parts[0]}"
+            IFS='#' echo "(${extracted_parts[@]})"
+            [[ ${#extracted_parts} -gt 1 ]] && _to="${extracted_parts[1]}"
+            echo "Extracted '${container_id:0:8}:${_from}' to 'tmp/${_to}'"
+            docker cp "${container_id}:${_from}" "tmp/${_to}" 2>&1 >/dev/null
         done
-        (( ${created} == 1 )) && docker rm -v ${container_id} 2>&1 >/dev/null
+        [[ ${created} -eq 1 ]] && docker rm -v ${container_id} 2>&1 >/dev/null
     fi
 }
 
@@ -302,7 +324,10 @@ function target_kill () {
 add_target "bar" "build target followed by run target"
 function target_bar () {
     target_build
-    target_run
+    built=$?
+    [[ $built -eq 0 ]] && target_run && return
+    echo "[Error]: Build failed, exiting..."
+    exit 100
 }
 
 add_target "debug" "use buildg to step through the dockerfile"
@@ -319,6 +344,7 @@ function main () {
     validate_flags
     execute_flags
     validate_target
+    cleanup
 }
 
 main

@@ -1,14 +1,10 @@
 
 .git/
-include/
 tmp/
 .editorconfig
 .gitignore
 build.tina
-dhelper.bat
-dhelper.sh
-Dockerfile
-Dockerfile.save
+dhelper
 flake.nix
 flake.lock
 highlight.css
