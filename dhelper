@@ -47,28 +47,37 @@ function usb_init () {
     cam_output=$(cam -l 2>/dev/null)
 
     # Find device entries like "UVC Camera (046d:0825) (usb-0000:00:14.0-3)"
-    ids=$(echo "$cam_output" | grep -oE '[0-9a-f]{4}:[0-9a-f]{4}' | uniq)
-    ids=$(echo -n "$ids" | tr "\n" "|")
+    ids=$(echo "${cam_output}" | grep -oE '[0-9a-f]{4}:[0-9a-f]{4}' | uniq)
+    ids=$(echo -n "${ids}" | tr "\n" "|")
 
     # highlight the device IDs in pink
-    cam_output=$(echo "$cam_output" | sed -E "s@($ids)@\o033[45;30m&\o033[0m@g")
+    cam_output=$(echo "${cam_output}" | sed -E "s@(${ids})@\o033[45;30m&\o033[0m@g")
 
     lsusb_output=$(lsusb)
 
-    bus_ids=$(echo "$lsusb_output" | sed -En "s/Bus ([0-9]{3}) Device ([0-9]{3}): ID ($ids).*/\1/p" | awk '{ printf "%d,", $1 }' | head -c -1)
-    bus_addrs=$(echo "$lsusb_output" | sed -En "s/Bus ([0-9]{3}) Device ([0-9]{3}): ID ($ids).*/\2/p" | awk '{ printf "%d,", $1 }' | head -c -1)
+    bus_ids=$(echo "${lsusb_output}" | sed -En "s/Bus ([0-9]{3}) Device ([0-9]{3}): ID (${ids}).*/\1/p" | awk '{ printf "%d,", $1 }' | head -c -1)
+    bus_addrs=$(echo "${lsusb_output}" | sed -En "s/Bus ([0-9]{3}) Device ([0-9]{3}): ID (${ids}).*/\2/p" | awk '{ printf "%d,", $1 }' | head -c -1)
 
-    lsusb_output=$(echo "$lsusb_output" | sed -E "s/Bus ([0-9]{3}) Device ([0-9]{3}): ID ($ids)/Bus \x1b[46;30m\1\x1b[0m Device \x1b[42;30m\2\x1b[0m: ID \3/g")
+    lsusb_output=$(echo "${lsusb_output}" | sed -E "s/Bus ([0-9]{3}) Device ([0-9]{3}): ID (${ids})/Bus \x1b[46;30m\1\x1b[0m Device \x1b[42;30m\2\x1b[0m: ID \3/g")
 
     # Split variables into arrays based on comma (,)
-    IFS=',' read -ra id_list <<< "$bus_ids"
-    IFS=',' read -ra addr_list <<< "$bus_addrs"
+    IFS=',' read -ra id_list <<< "${bus_ids}"
+    IFS=',' read -ra addr_list <<< "${bus_addrs}"
 
     usb_list=()
     for ((i=0; i<${#id_list[@]}; i++)); do
         # Find the ID from the match
         local addition=(${id_list[$i]},${addr_list[$i]})
         usb_list+=(${addition})
+
+        local id=$(printf "%0.3i" ${id_list[$i]})
+        local addr=$(printf "%0.3i" ${addr_list[$i]})
+        local device="/dev/bus/usb/${id}/${addr}"
+
+        # Check permissions for the device
+        if [[ ! -w "${device}" ]]; then
+            error ${BASH_SOURCE[0]} ${LINENO} "Device '${device}' is not writable by the current user, please chown the device" 120
+        fi
     done
 }
 
