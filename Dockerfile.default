@@ -19,10 +19,12 @@ RUN     git clone https://github.com/bluenviron/mediamtx                        
     &&  cd mediamtx                                                                         \
     &&  git checkout 91ada9bf07487371f2c0189ab73201ddbaef468e
 
-RUN     mkdir -p /sources/ffmpeg/sources
-WORKDIR /sources/ffmpeg/sources
+# RUN     mkdir -p /sources/ffmpeg/sources
+# WORKDIR /sources/ffmpeg/sources
 
-RUN     git clone --depth 1 https://github.com/mstorsjo/fdk-aac
+# RUN     git clone https://code.videolan.org/videolan/x264
+# RUN     git clone https://bitbucket.org/multicoreware/x265_git x265
+# RUN     git clone --depth 1 https://github.com/mstorsjo/fdk-aac
 # RUN     git clone git://git.videolan.org/x264
 # RUN     git clone https://chromium.googlesource.com/webm/libvpx/
 # RUN     wget http://downloads.sourceforge.net/project/lame/lame/3.99/lame-3.99.5.tar.gz     \
@@ -59,11 +61,12 @@ RUN     apt-get update              \
             ninja-build             \
             pkg-config              \
             autoconf                \
+            libtool                 \
     &&  update-ca-certificates
 
 ARG JOBS=1
 ENV LDFLAGS=--static
-ENV CROSS_COMPILE=riscv64-linux-gnu
+ENV CROSS_COMPILE=riscv64-linux-gnu-
 
 # RUN gcc -E -x assembler-with-cpp -undef \
 #     -Ilinux/include \
@@ -74,32 +77,41 @@ ENV CROSS_COMPILE=riscv64-linux-gnu
 #     sun20i-d1-mangopi-mq-pro.dts.pp
 
 
-# COPY --from=CLONE_STAGE /sources/linux      /builds/linux
-# COPY                    deps/build/.config  /builds/linux/.config
+COPY --from=CLONE_STAGE /sources/linux      /builds/linux
+COPY                    deps/build/.config  /builds/linux/.config
 
-# RUN     cd linux \
-#     # &&  make ARCH=riscv defconfig \
-#     &&  CROSS_COMPILE=${CROSS_COMPILE}- make ARCH=riscv -j${JOBS}
+RUN     cd linux \
+    # &&  make ARCH=riscv defconfig \
+    &&  CROSS_COMPILE=${CROSS_COMPILE} make ARCH=riscv -j${JOBS}
 
-COPY --from=CLONE_STAGE /sources/ffmpeg     /builds/ffmpeg
+# COPY --from=CLONE_STAGE /sources/ffmpeg     /builds/ffmpeg
 
-RUN     apt-get install -y libtool
+# RUN     mkdir /builds/ffmpeg/deps
+# RUN     cd ffmpeg/sources/x264                              \
+#     &&  ./configure                                         \
+#             --enable-static                                 \
+#             --host=${CROSS_COMPILE}                         \
+#             --cross-prefix=${CROSS_COMPILE}-                \
+#             --prefix=/builds/ffmpeg/deps                    \
+#     && make -j${JOBS} || return 0
+# RUN     cd ffmpeg/sources/x265                           \
+#     &&  /bin/bash -c "./make-Makefiles.bash"                \
+#     &&  make
 
-RUN     mkdir -p /builds/ffmpeg/deps                        \
-    &&  cd ffmpeg/sources/fdk-aac                           \
-    &&  autoreconf -fiv                                     \
-    &&  ./configure                                         \
-            # --enable-static                                 \
-            # --disable-shared                                 \
-            # --host=${CROSS_COMPILE}                         \
-            --prefix=/builds/ffmpeg/deps                    \
-    &&  make -j${JOBS}                                      \
-    &&  make install
+# RUN     cd ffmpeg/sources/fdk-aac                           \
+#     &&  autoreconf -fiv                                     \
+#     &&  ./configure                                         \
+#             # --enable-static                                 \
+#             # --disable-shared                                 \
+#             # --host=${CROSS_COMPILE}                         \
+#             --prefix=/builds/ffmpeg/deps                    \
+#     &&  make -j${JOBS}                                      \
+#     &&  make install
 
-RUN     cd ffmpeg/deps/lib                                  \
-    &&  ln -s libfdk-aac.a  fdk-aac.a                       \
-    &&  ln -s libfdk-aac.so fdk-aac.so                      \
-    &&  ln -s libfdk-aac.so fdk-aac
+# RUN     cd ffmpeg/deps/lib                                  \
+#     &&  ln -s libfdk-aac.a  fdk-aac.a                       \
+#     &&  ln -s libfdk-aac.so fdk-aac.so                      \
+#     &&  ln -s libfdk-aac.so fdk-aac
 
 # LIBVPX DOES NOT CURRENTLY SUPPORT RISCV
 # RUN     cd ffmpeg/sources/libvpx                            \
@@ -111,101 +123,105 @@ RUN     cd ffmpeg/deps/lib                                  \
 #     &&  make -j${JOBS}                                      \
 #     &&  make install || (echo $? && exit 0 )
 
-RUN     cd ffmpeg                                           \
-    &&  mkdir build                                         \
-    &&  ./configure                                         \
-            --disable-x86asm                                \
-            # --arch=riscv64                                  \
-            --target-os=linux                               \
-            # --cross-prefix=${CROSS_COMPILE}-                \
-            # --enable-gpl                                    \
-            # --enable-version3                               \
-            --enable-static                                 \
-            --disable-shared                                \
-            # --enable-libfdk_aac                             \
-            # --enable-libvpx                                 \
-            # --enable-libx264                                \
-            # --enable-libx265                                \
-            # --enable-nonfree                                \
-            # --enable-libopencore-amrnb                      \
-            # --enable-libopencore-amrwb                      \
-            # --enable-libgsm                                 \
-            # --enable-libxvid                                \
-            # --extra-cflags=-I/builds/ffmpeg/deps/include    \
-            # --extra-ldflags=-L/builds/ffmpeg/deps/lib       \
-            # --extra-libs=-lfdk-aac                          \
-    &&  make -j${JOBS}
+# RUN     cd ffmpeg                                           \
+#     &&  mkdir build                                         \
+#     &&  ./configure                                         \
+#             --disable-doc                                   \
+#             --disable-runtime-cpudetect                     \
+#             --disable-ffplay                                \
+#             --disable-ffprobe                               \
+#             # --disable-x86asm                                \
+#             --arch=riscv64                                  \
+#             --target-os=linux                               \
+#             --cross-prefix=${CROSS_COMPILE}-                \
+#             # --enable-gpl                                    \
+#             # --enable-version3                               \
+#             --enable-static                                 \
+#             --disable-shared                                \
+#             --disable-libfdk_aac                             \
+#             # --enable-libvpx                                 \
+#             # --enable-libx264                                \
+#             # --enable-libx265                                \
+#             # --enable-nonfree                                \
+#             # --enable-libopencore-amrnb                      \
+#             # --enable-libopencore-amrwb                      \
+#             # --enable-libgsm                                 \
+#             # --enable-libxvid                                \
+#             # --extra-cflags=-I/builds/ffmpeg/deps/include    \
+#             # --extra-ldflags=-L/builds/ffmpeg/deps/lib       \
+#             # --extra-libs=-lfdk-aac                          \
+#     &&  make -j${JOBS}
     # || (echo $? && exit 0 )
 
 # ENV CROSS_COMPILE=riscv64-linux-gnu-
 
-# COPY --from=CLONE_STAGE /sources/busybox    /builds/busybox
+COPY --from=CLONE_STAGE /sources/busybox    /builds/busybox
 
-# RUN     cd busybox \
-#     &&  LDFLAGS=--static make defconfig \
-#     &&  LDFLAGS=--static make -j4
+RUN     cd busybox \
+    &&  LDFLAGS=--static make defconfig \
+    &&  LDFLAGS=--static make -j4
 
-# RUN     mkdir rootfs \
-#     &&  make -C busybox install CONFIG_PREFIX=../rootfs
-
-
-# COPY --from=CLONE_STAGE /sources/go         /usr/local
-# ENV PATH=$PATH:/usr/local/go/bin
+RUN     mkdir rootfs \
+    &&  make -C busybox install CONFIG_PREFIX=../rootfs
 
 
-# COPY --from=CLONE_STAGE /sources/mediamtx   /builds/mediamtx
-
-# ENV OLD_CC=${CC}
-
-# ENV GOOS=linux
-# ENV GOARCH=riscv64
-# ENV CGO_ENABLED=0
-# ENV CC=riscv64-linux-gnu-gcc
-# RUN     cd mediamtx             \
-#     &&  go build .
+COPY --from=CLONE_STAGE /sources/go         /usr/local
+ENV PATH=$PATH:/usr/local/go/bin
 
 
-# FROM ubuntu:22.04 AS DISK_STAGE
+COPY --from=CLONE_STAGE /sources/mediamtx   /builds/mediamtx
 
-# WORKDIR /disk
+ENV OLD_CC=${CC}
+
+ENV GOOS=linux
+ENV GOARCH=riscv64
+ENV CGO_ENABLED=0
+ENV CC=riscv64-linux-gnu-gcc
+RUN     cd mediamtx             \
+    &&  go build .
+
+
+FROM ubuntu:22.04 AS DISK_STAGE
+
+WORKDIR /disk
 # COPY --from=BUILD_STAGE     /builds/ffmpeg/ffmpeg       ffmpeg
-# COPY --from=BUILD_STAGE     /builds/busybox             busybox
-# COPY --from=BUILD_STAGE     /builds/mediamtx/mediamtx   mediamtx
-# COPY --from=BUILD_STAGE     /builds/rootfs              rootfs
-# ADD                         deps/rootfs/mediamtx.yml    mediamtx.yml
-# ADD                         deps/rootfs/startup.sh      startup.sh
+COPY --from=BUILD_STAGE     /builds/busybox             busybox
+COPY --from=BUILD_STAGE     /builds/mediamtx/mediamtx   mediamtx
+COPY --from=BUILD_STAGE     /builds/rootfs              rootfs
+ADD                         deps/rootfs/mediamtx.yml    mediamtx.yml
+ADD                         deps/rootfs/startup.sh      startup.sh
 
-# # generate virtual disk and populate with rootfs
-# RUN     dd if=/dev/zero of=busybox-disk bs=1M count=1024        \
-#     &&  mkdir -p rootfs/proc rootfs/sys rootfs/dev rootfs/etc   \
-#     &&  touch rootfs/etc/fstab                                  \
-#     &&  mkdir -p rootfs/etc/init.d                              \
-#     &&  cp startup.sh rootfs/etc/init.d/rcS                     \
-#     &&  cp mediamtx rootfs/bin/mediamtx                         \
-#     &&  cp mediamtx.yml rootfs/etc/mediamtx.yml                 \
-#     &&  chmod +x rootfs/etc/init.d/rcS                          \
-#     &&  mv ffmpeg rootfs/bin/ffmpeg                             \
-#     &&  chmod +x rootfs/bin/ffmpeg                              \
-#     &&  mkfs.ext4 busybox-disk -d rootfs                         
+# generate virtual disk and populate with rootfs
+RUN     dd if=/dev/zero of=busybox-disk bs=1M count=1024        \
+    &&  mkdir -p rootfs/proc rootfs/sys rootfs/dev rootfs/etc   \
+    &&  touch rootfs/etc/fstab                                  \
+    &&  mkdir -p rootfs/etc/init.d                              \
+    &&  cp startup.sh rootfs/etc/init.d/rcS                     \
+    &&  cp mediamtx rootfs/bin/mediamtx                         \
+    &&  cp mediamtx.yml rootfs/etc/mediamtx.yml                 \
+    &&  chmod +x rootfs/etc/init.d/rcS                          \
+    # &&  mv ffmpeg rootfs/bin/ffmpeg                             \
+    # &&  chmod +x rootfs/bin/ffmpeg                              \
+    &&  mkfs.ext4 busybox-disk -d rootfs                         
 
 
-# FROM ubuntu:22.04 AS RUN_STAGE
+FROM ubuntu:22.04 AS RUN_STAGE
 
-# WORKDIR /doorbellian
+WORKDIR /doorbellian
 
-# COPY --from=DISK_STAGE  /disk/busybox-disk                      busybox-disk
-# COPY --from=BUILD_STAGE /builds/linux/arch/riscv/boot/Image     linux.Image
-# # COPY --from=BUILD_STAGE /builds/sun20i-d1-mangopi-mq-pro.dtb    \
-# #     sun20i-d1-mangopi-mq-pro.dtb
+COPY --from=DISK_STAGE  /disk/busybox-disk                      busybox-disk
+COPY --from=BUILD_STAGE /builds/linux/arch/riscv/boot/Image     linux.Image
+# COPY --from=BUILD_STAGE /builds/sun20i-d1-mangopi-mq-pro.dtb    \
+#     sun20i-d1-mangopi-mq-pro.dtb
 
-# RUN     apt-get update              \
-#     &&  apt-get install -y          \
-#             qemu-system-riscv64     \
-#             v4l-utils               \
-#             usbutils
+RUN     apt-get update              \
+    &&  apt-get install -y          \
+            qemu-system-riscv64     \
+            v4l-utils               \
+            usbutils
 
-# ADD deps/run/doorbellian-qemu.sh doorbellian-qemu.sh
-# RUN chmod +x doorbellian-qemu.sh
+ADD deps/run/doorbellian-qemu.sh doorbellian-qemu.sh
+RUN chmod +x doorbellian-qemu.sh
 
 # CMD ["/doorbellian/doorbellian-qemu.sh"]
 CMD ["/bin/bash"]

@@ -3,15 +3,27 @@
 # ================================================================================================
 #                                            GLOBALS
 
-declare -A valid_flag_names
-declare -A valid_flag_data
+SCRIPT_NAME=$0
+
+declare -A valid_flags
+declare -a valid_flag_names
+
 declare -A valid_flag_priorities
 
+declare -A valid_flag_names_descriptions
+declare -A valid_flag_names_arguments
+
+declare -a flag_schedule
+
+
 declare -a valid_targets
-declare -a valid_target_descriptions
+declare -a valid_targets_arguments
+declare -a valid_targets_arguments_descriptions
+
 
 declare -a arguments
 arguments+=($*)
+
 
 # ================================================================================================
 #                                              UTILS
@@ -24,7 +36,7 @@ function error () {
     [[ -n "$message" ]] && echo "[ERROR][${file}][${line_number}][${code}]: ${message}" || echo "[ERROR][${file}][${line_number}][${code}]"
     exit ${code}
 }
-trap 'error ${BASH_SOURCE[0]} ${LINENO}' ERR
+# trap 'error ${BASH_SOURCE[0]} ${LINENO}' ERR
 
 # (1: array name (global); 2: array type (-a/-A))
 function arr_max_length () {
@@ -34,8 +46,6 @@ function arr_max_length () {
                             && caller && echo "[ERROR]: Variable '$1' does not exist!"              && exit 71
     [[ ! -v "$1"    || "${arr_declare}" != "declare -a"* && "${arr_declare}" != "declare -A"* ]]    \
                             && caller && echo "[ERROR]: Variable '$1' is not an array!"             && exit 72
-    [[ ! -z "$3" && "$3" != "-a" && "$3" != "-A" ]]                                                 \
-                            && caller && echo "[ERROR]: Array type '$3' is not a valid type!"       && exit 73
     local -n arr="$1"
     local max_length=${arr[0]}
 
@@ -71,7 +81,7 @@ function arr_pop () {
     [[ -z "$1" ]]           && caller && echo "[ERROR]: Array name is empty!"                       && exit 90
     local arr_declare="$(declare -p "$1" 2>/dev/null)"
     [[ -z "${!1+x}" || "${arr_declare}" != "declare"* ]]                                            \
-                            && caller && echo "[ERROR]: Variable '$1' does not exist!"              && exit 81
+                            && caller && echo "[ERROR]: Variable '$1' does not exist or is empty!"  && exit 81
     [[ ! -v "$1"    || "${arr_declare}" != "declare -a"* && "${arr_declare}" != "declare -A"* ]]    \
                             && caller && echo "[ERROR]: Variable '$1' is not an array!"             && exit 82
     [[ ! $2 =~ ^[0-9]+$ ]]  && caller && echo "[ERROR]: Index '$2' is not a valid number!"          && exit 93
@@ -84,23 +94,37 @@ function arr_pop () {
 # ================================================================================================
 #                                       CORE FUNCTIONALITY
 #  1: flag (single character); 2: flag name; 3: flag description;
-#  4: flag priority; 5: flag arguments (semicolon delimiter); 6: flag argument descriptions (semicolon delimiter)
+#  4: flag priority; 5: flag argument name; 6: flag argument description
 function add_flag () {
     local flag="$1"
     local name="$2"
     local description="'$3'"
     local priority=$4
-    local arguments="($5)"
-    local arg_descriptions="($6)"
+    local argument="$5"
+    local arg_descriptions="$6"
 
+    # basic validations
     [[ ${#flag} -eq 0 ]]                && caller && echo "[ERROR]: Flags cannot be empty!"                                         && exit 60
     [[ ${#flag} -gt 1 ]]                && caller && echo "[ERROR]: Flag '${flag}' is invalid! Flags must be a single character!"   && exit 61
-    [[ "$description"       == *'|'* ]] && caller && echo "[ERROR]: Description cannot contain '|'"                                 && exit 62
-    [[ "$arguments"         == *'|'* ]] && caller && echo "[ERROR]: Arguments cannot contain '|'"                                   && exit 63
-    [[ "$arg_descriptions"  == *'|'* ]] && caller && echo "[ERROR]: Argument descriptions cannot contain '|'"                       && exit 64
+    [[ -z "${description}" ]]           && caller && echo "[ERROR]: Description for flag '${name}' cannot be empty!"                && exit 62
+    [[ -z "${priority}" ]]              && caller && echo "[ERROR]: Must provide a priority for flag '${name}'!"                    && exit 63
+    [[ ! ${priority} =~ ^[0-9]+$ ]]     && caller && echo "[ERROR]: Priority <${priority}> for flag '${name}' is not a number!"     && exit 64
 
-    [[ "${flag}" == "-" ]] && valid_flag_names["-"]+="${name};" || valid_flag_names["${flag}"]="${name}"
-    valid_flag_data["${name}"]="description=${description}|arguments=${arguments}|arg_descriptions=${arg_descriptions}"
+    # more complex validations
+    for key in "${!valid_flags[@]}"; do # iterate over keys
+        [[ "${keys[i]}" == "${flag}" ]]         && caller && echo "[ERROR]: Flag <${flag}> already registered!"             && exit 65
+    done
+
+    for flag_name in "${valid_flag_names[@]}"; do
+        [[ "${flag_name[i]}" == "${name}" ]]    && caller && echo "[ERROR]: Flag name <${flag_name}> already registered!"   && exit 66
+    done
+
+    # register information
+    [[ "${flag}" == "-" ]] || valid_flags["${flag}"]="${name}"
+    
+    valid_flag_names+=("${name}")
+    valid_flag_names_descriptions["${name}"]="${description}"
+    # valid_flag_names_arguments["${name}"]="${argument}"
     valid_flag_priorities["${priority}"]=${priority}
 }
 
@@ -117,20 +141,21 @@ function validate_flag () {
     local valid_flag_found=0
 
     # check if the supplied flag is valid
-    for value in "${!valid_flag_names[@]}"; do
-        if [[ "$flag" != "-" && "$value" == "$flag" ]]; then
+    for value in "${!valid_flags[@]}"; do
+        if [[ "${flag}" != "-" && "${value}" == "${flag}" ]]; then
             valid_flag_found=1
             break
         fi
     done
 
     # if no valid flag matching the supplied flag is found, error
-    if [[ $valid_flag_found -eq 0 ]]; then
-        caller && echo "[ERROR]: '-$flag' is not a valid flag."
-        print_help
+    if [[ ${valid_flag_found} -eq 0 ]]; then
+        caller && echo "[ERROR]: '-${flag}' is not a valid flag."
+        # print_help
         exit 1
     else
-        eval "flag_${flag}"
+        local flag_name="${valid_flags[${flag}]}"
+        eval "flag_name_${flag_name}"
     fi
 }
 
@@ -139,26 +164,18 @@ function validate_flag_name () {
     local flag_name="$1"
     local valid_flag_name_found=0
 
-    local no_short_names=
-    local no_short_names_text="${valid_flag_names[-]}"
-    unset valid_flag_names[-]
-    IFS=';' read -ra no_short_names <<< "${no_short_names_text}"
-
     # check if the supplied flag is valid
-    for value in "${no_short_names[@]}"; do
-        echo "${value}"
+    for value in "${valid_flag_names[@]}"; do
         if [[ "${value}" = "${flag_name}" ]]; then
             valid_flag_name_found=1
             break
         fi
     done
 
-    valid_flag_names[-]="${no_short_names_text}"
-
     # if no valid flag matching the supplied flag is found, error
-    if [[ $valid_flag_name_found -eq 0 ]]; then
-        caller && echo "[ERROR]: '--$flag_name' is not a valid flag name."
-        print_help
+    if [[ ${valid_flag_name_found} -eq 0 ]]; then
+        caller && echo "[ERROR]: '--${flag_name}' is not a valid flag name."
+        # print_help
         exit 1
     else
         eval "flag_name_${flag_name}"
@@ -203,7 +220,7 @@ function validate_target () {
     # if no valid target matching the supplied target is found, error
     if [[ $valid_target_found -eq 0 ]]; then
         caller && echo "[ERROR]: '$target' is not a valid target."
-        print_help
+        # print_help
         exit 2
     else
         eval "target_${target}"

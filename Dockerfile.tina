@@ -10,7 +10,7 @@ FROM ubuntu:22.04 AS FETCH_STAGE
 #WORKDIR /sources
 
 # tina linux is based on linux 5.4
-# RUN     git clone https://github.com/nucleus-labs/Tina-Linux.git linux-tina
+# RUN     git clone https://github.com/nucleus-labs/Tina-Linux linux-tina
 #RUN     git clone --depth=1 -b 1_36_stable git://busybox.net/busybox
 #RUN     wget https://go.dev/dl/go1.20.5.linux-amd64.tar.gz                                              \
 #    &&  tar -xzf go1.20.5.linux-amd64.tar.gz                                                            \
@@ -23,6 +23,8 @@ FROM ubuntu:22.04 AS FETCH_STAGE
 
 
 FROM ubuntu:22.04 AS BUILD_STAGE
+
+ARG JOBS=1
 
 # RUN     apt-get update              \
 #     &&  apt-get upgrade
@@ -112,7 +114,7 @@ WORKDIR /builds/linux-tina
 
 # ENV PATH="$PATH:/home/iris/x-tools/riscv64-nucleus_labs-linux-gnu/bin"
 # ENV CCPREFIX="/home/iris/x-tools/riscv64-nucleus_labs-linux-gnu/bin/riscv64-nucleus_labs-linux-gnu-"
-# ENV CROSS_COMPILE=riscv64-unknown-linux-gnu-
+ENV CROSS_COMPILE=riscv64-unknown-linux-gnu-
 # ENV LDFLAGS=--static
 
 
@@ -126,25 +128,6 @@ WORKDIR /builds/linux-tina
 # CMD ["/bin/bash"]
 
 # RUN     git submodule update --init --recursive
-
-#RUN     /bin/bash -c "                          \
-#            source build/envsetup.sh            \
-#        &&  lunch 1                             \
-#        &&  FORCE_UNSAFE_CONFIGURE=1 make       \
-#        &&  mboot                               \
-#        &&  pack                                \
-#    "
-
-# RUN     /bin/bash -c "                                            \
-#                 source build/envsetup.sh                          \
-#             &&  lunch 1                                           \
-#             &&  set -o pipefail                                   \
-#                 &&  export FORCE_UNSAFE_CONFIGURE=1               \
-#                 &&  (make -j12 2>&1 | tee build.log)              \
-#                 ;   (grep \"/builds/linux-tina/out\" build.log    \
-#                 ||  echo \"'/builds/linux-tina/out' not found\")  \
-#                 &&  exit 1                                        \
-#         "
 
 ADD     deps/build/build-tina.sh    /builds/linux-tina/build.sh
 RUN     chmod +x build.sh                   \
