@@ -80,14 +80,19 @@ RUN     apt-get update          \
             wget                \
             python2             \
             file                \
-            nano
+            rsync               \
+            nano                \
+            openssl             \
             # help2man            \
             # texinfo             \
             # autoconf            \
             # automake            \
             # autopoint           \
-            # rsync               \
             # gperf
+    &&  update-ca-certificates
+
+ARG SIGN_NAME
+ARG SIGN_EMAIL
 
 # RUN     useradd -m iris
 # USER    iris
@@ -104,30 +109,28 @@ RUN     apt-get update          \
 #     &&  apt-get remove -y m4
 
 # ENV PATH=$PATH:/usr/local/bin/m4
-RUN     mkdir /builds
 
 COPY                     ./linux-tina        /builds/linux-tina
 #COPY --from=FETCH_STAGE /sources/linux      /home/iris/builds/linux
 
 WORKDIR /builds/linux-tina
 
+# RUN     git submodule update --init --recursive
+
+COPY ./deps/build/prebuilt.tar.gz                                           /builds/linux-tina/prebuilt.tar.gz
+COPY ./deps/build/dl.tar                                                    /builds/linux-tina/dl.tar
+COPY ./deps/build/riscv64-linux-x86_64-20200528.tar.xz                      /builds/linux-tina/lichee/brandy-2.0/tools/toolchain/riscv64-linux-x86_64-20200528.tar.xz
+COPY ./deps/build/gcc-linaro-7.2.1-2017.11-x86_64_arm-linux-gnueabi.tar.xz  /builds/linux-tina/lichee/brandy-2.0/tools/toolchain/gcc-linaro-7.2.1-2017.11-x86_64_arm-linux-gnueabi.tar.xz
+
+RUN     tar xzvf prebuilt.tar.gz    \
+    &&  tar xvf dl.tar              \
+    &&  rm prebuilt.tar.gz          \
+    &&  rm dl.tar
 
 # ENV PATH="$PATH:/home/iris/x-tools/riscv64-nucleus_labs-linux-gnu/bin"
 # ENV CCPREFIX="/home/iris/x-tools/riscv64-nucleus_labs-linux-gnu/bin/riscv64-nucleus_labs-linux-gnu-"
 ENV CROSS_COMPILE=riscv64-unknown-linux-gnu-
 # ENV LDFLAGS=--static
-
-
-# RUN gcc -E -x assembler-with-cpp -undef \
-#     -Ilinux/include \
-#     -o sun20i-d1-mangopi-mq-pro.dts.pp \
-#     linux/arch/riscv/boot/dts/allwinner/sun20i-d1-mangopi-mq-pro.dts
-# RUN dtc -I dts -O dtb \
-#     -o sun20i-d1-mangopi-mq-pro.dtb \
-#     sun20i-d1-mangopi-mq-pro.dts.pp
-# CMD ["/bin/bash"]
-
-# RUN     git submodule update --init --recursive
 
 ADD     deps/build/build-tina.sh    /builds/linux-tina/build.sh
 RUN     chmod +x build.sh                   \

@@ -1,4 +1,5 @@
 
+.env
 .git/
 tmp/
 .editorconfig
@@ -8,4 +9,11 @@ dhelper
 flake.nix
 flake.lock
 highlight.css
+
 tina/
+deps/build/dl.tar
+deps/build/prebuilt.tar.gz
+deps/build/gcc-linaro-7.2.1-2017.11-x86_64_arm-linux-gnueabi.tar.xz
+deps/build/riscv64-linux-x86_64-20200528.tar.xz
+
+deps/rootfs/ffmpeg-2.7.6.tar.xz

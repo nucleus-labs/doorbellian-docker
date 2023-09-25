@@ -223,5 +223,9 @@ RUN     apt-get update              \
 ADD deps/run/doorbellian-qemu.sh doorbellian-qemu.sh
 RUN chmod +x doorbellian-qemu.sh
 
+# ADD deps/rootfs/prebuilt.tar.gz prebuilt.tar.gz
+# RUN     tar xzvf prebuilt.tar.gz    \
+#     &&  rm prebuilt.tar.gz
+
 # CMD ["/doorbellian/doorbellian-qemu.sh"]
 CMD ["/bin/bash"]

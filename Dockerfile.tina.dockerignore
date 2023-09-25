@@ -1,0 +1,13 @@
+
+.env
+.git/
+tmp/
+.editorconfig
+.gitignore
+build.tina
+dhelper
+flake.nix
+flake.lock
+highlight.css
+
+deps/rootfs/ffmpeg-2.7.6.tar.xz

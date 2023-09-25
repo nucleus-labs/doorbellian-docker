@@ -155,7 +155,8 @@ function validate_flag () {
         exit 1
     else
         local flag_name="${valid_flags[${flag}]}"
-        eval "flag_name_${flag_name}"
+        local function_name="${flag_name//-/_}"
+        eval "flag_name_${function_name}"
     fi
 }
 
@@ -166,7 +167,7 @@ function validate_flag_name () {
 
     # check if the supplied flag is valid
     for value in "${valid_flag_names[@]}"; do
-        if [[ "${value}" = "${flag_name}" ]]; then
+        if [[ "${value}" == "${flag_name}" || "${value}" == "${flag//-/_}" ]]; then
             valid_flag_name_found=1
             break
         fi
@@ -178,7 +179,8 @@ function validate_flag_name () {
         # print_help
         exit 1
     else
-        eval "flag_name_${flag_name}"
+        # parameter expansion
+        eval "flag_name_${flag_name//-/_}"
     fi
 }
 

@@ -7,3 +7,9 @@ build.tina
 flake.nix
 flake.lock
 highlight.css
+deps/build/dl.tar
+deps/build/prebuilt.tar.gz
+deps/build/gcc-linaro-7.2.1-2017.11-x86_64_arm-linux-gnueabi.tar.xz
+deps/build/riscv64-linux-x86_64-20200528.tar.xz
+deps/build/ubuntu-23.04-preinstalled-server-riscv64+nezha.img.xz
+.env

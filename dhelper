@@ -31,7 +31,8 @@ function debug () {
 }
 
 function init () {
-    return
+    source .env
+    export DOCKER_BUILDKIT=1
 }
 
 function cleanup () {
@@ -250,19 +251,23 @@ add_flag "-" "tina" "a shorthand flag for tina-based doorbellian development ; d
 function flag_name_tina () {
     dockerfile="Dockerfile.tina"
     image_tag="tina"
-    debug "using dockerfile '${dockerfile}'"
-    debug "using tag '${image_tag}'"
+    extra_args+=("--build-arg 'SIGN_NAME=${SIGN_NAME}'")
+    extra_args+=("--build-arg 'SIGN_EMAIL=${SIGN_EMAIL}'")
+    debug "using dockerfile:    '${dockerfile}'"
+    debug "using tag:           '${image_tag}'"
+    debug "using signing name:  '${SIGN_NAME}'"
+    debug "using signing email: '${SIGN_EMAIL}'"
 }
 
-add_flag "-" "args" "additional arguments to pass to the target ; can be used multiple times" 1
-function flag_name_args () {
-    local args=("${arguments[0]}" "test")
-    echo "${args[0]};${args[1]}"
-    IFS="," echo "args: <${args[@]}>"
-    extra_args+=(${args})
+add_flag "-" "arg" "additional arguments to pass to the target ; can be used multiple times" 1
+function flag_name_arg () {
+    extra_args+=(${arguments[0]})
     arr_pop arguments 0
-    # IFS=',' echo "args: <${extra_args[@]}>"
-    # exit 0
+}
+
+add_flag "-" "no-cache" "Only functions during the build target, builds a docker image without using a cache" 2
+function flag_name_no_cache () {
+    extra_args+=("--no-cache")
 }
 
 # ================================================================================================
@@ -303,9 +308,9 @@ function target_clean () {
 
 add_target "build" "build the docker image"
 function target_build () {
-    export DOCKER_BUILDKIT=0
-    docker build --build-arg JOBS=${JOBS} --progress=plain -f "${dockerfile}" \
-        -t doorbellian:${image_tag} .
+    local _run="docker build --build-arg JOBS=${JOBS} -f \"${dockerfile}\" -t doorbellian:${image_tag} ${extra_args[*]} ."
+    debug "${_run}"
+    eval "${_run}"
     return $?
 }
 
