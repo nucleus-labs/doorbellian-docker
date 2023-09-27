@@ -296,13 +296,16 @@ function target_usb () {
 
 add_target "clean" "clean out the related containers and images, and dangling images"
 function target_clean () {
+    debug "stopping containers..."
+    docker ps -a --filter "status=running" --filter "ancestor=doorbellian:${image_tag}" --format "{{.ID}}" | xargs -r docker stop
     debug "cleaning..."
-    docker ps -a --filter "status=created" --format "{{.ID}}" | xargs -r docker rm
-    docker ps -a --filter "status=exited" --format "{{.ID}}" | xargs -r docker rm
+    docker ps -a --filter "status=created" --filter "ancestor=doorbellian:${image_tag}" --format "{{.ID}}" | xargs -r docker rm
+    docker ps -a --filter "status=exited" --filter "ancestor=doorbellian:${image_tag}" --format "{{.ID}}" | xargs -r docker rm
     if [[ -n "$(docker images -q doorbellian:${image_tag} 2> /dev/null)" ]]; then
         [[ ! -z "${image_tag}" ]] && docker image rm --force doorbellian:${image_tag} || docker image rm --force doorbellian
     fi
     docker images -f "dangling=true" --format "{{.ID}}" | xargs -r docker rmi
+    docker buildx prune -f 2> /dev/null
     debug "cleaned."
 }
 
@@ -328,11 +331,12 @@ function target_extract () {
         for extracted in "${extracts[@]}"; do
             IFS=';' read -ra extracted_parts <<< "${extracted}"
             local _from="${extracted_parts[0]}"
-            local _to="${extracted_parts[0]}"
-            # IFS='#' echo "(${extracted_parts[@]})"
-            [[ ${#extracted_parts} -gt 1 ]] && _to="${extracted_parts[1]}"
-            echo "Extracted ${container_id:0:8}:'${_from}' to 'tmp/${_to}'"
-            docker cp "${container_id}:${_from}" "tmp/${_to}" 2>&1 >/dev/null
+            local _to="tmp/${extracted_parts[0]}"
+            [[ ${#extracted_parts} -gt 1 ]] && _to="tmp/${extracted_parts[1]}"
+            mkdir -p $(dirname "${_to}")
+            echo "Extracting ${container_id:0:8}:'${_from}' to '${_to}'"
+            docker cp "${container_id}:${_from}" "${_to}" 2>&1 >/dev/null
+            echo "Done Extracting."
         done
         [[ ${created} -eq 1 ]] && docker rm -v ${container_id} 2>&1 >/dev/null
     else

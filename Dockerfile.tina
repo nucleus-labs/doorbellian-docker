@@ -1,24 +1,26 @@
 FROM ubuntu:22.04 AS FETCH_STAGE
 
-#RUN     apt-get update          \
-#    &&  apt-get upgrade -y      \
-#    &&  apt-get install -y      \
-#            git                 \
-#            wget                \
-#            xz-utils
+RUN     apt-get update          \
+   &&  apt-get upgrade -y      \
+   &&  apt-get install -y      \
+           git                 \
+           wget                \
+           xz-utils
 
-#WORKDIR /sources
+WORKDIR /sources
 
 # tina linux is based on linux 5.4
 # RUN     git clone https://github.com/nucleus-labs/Tina-Linux linux-tina
-#RUN     git clone --depth=1 -b 1_36_stable git://busybox.net/busybox
-#RUN     wget https://go.dev/dl/go1.20.5.linux-amd64.tar.gz                                              \
-#    &&  tar -xzf go1.20.5.linux-amd64.tar.gz                                                            \
+# RUN     wget https://go.dev/dl/go1.20.5.linux-amd64.tar.gz                              \
+#    &&  tar -xzf go1.20.5.linux-amd64.tar.gz                                             \
 #    &&  rm go1.20.5.linux-amd64.tar.gz
-#RUN     git clone --depth=1 -b release/6.0 https://git.ffmpeg.org/ffmpeg
-#RUN     git clone https://github.com/bluenviron/mediamtx                                \
-#    &&  cd mediamtx                                                                     \
-#    &&  git checkout 91ada9bf07487371f2c0189ab73201ddbaef468e
+RUN     git clone https://go.googlesource.com/go goroot                                 \
+    &&  cd goroot                                                                       \
+    &&  git checkout go1.20.5
+RUN     git clone --depth=1 -b release/6.0 https://git.ffmpeg.org/ffmpeg
+RUN     git clone https://github.com/bluenviron/mediamtx                                \
+    &&  cd mediamtx                                                                     \
+    &&  git checkout 91ada9bf07487371f2c0189ab73201ddbaef468e
 
 
 
@@ -83,6 +85,7 @@ RUN     apt-get update          \
             rsync               \
             nano                \
             openssl             \
+            bc                  \
             # help2man            \
             # texinfo             \
             # autoconf            \
@@ -94,24 +97,10 @@ RUN     apt-get update          \
 ARG SIGN_NAME
 ARG SIGN_EMAIL
 
-# RUN     useradd -m iris
-# USER    iris
-# RUN     mkdir -p /home/iris/builds
-# WORKDIR /home/iris/builds
-# WORKDIR /builds
-# COPY --from=FETCH_STAGE /sources/m4             /builds/m4
-
-# RUN     cd m4                       \
-#     &&  ./bootstrap                 \
-#     &&  ./configure --enable-c++    \
-#     &&  make                        \
-#     &&  make install                \
-#     &&  apt-get remove -y m4
-
 # ENV PATH=$PATH:/usr/local/bin/m4
 
 COPY                     ./linux-tina        /builds/linux-tina
-#COPY --from=FETCH_STAGE /sources/linux      /home/iris/builds/linux
+# COPY --from=FETCH_STAGE  /sources/linux      /builds/linux-tina
 
 WORKDIR /builds/linux-tina
 
@@ -128,56 +117,74 @@ RUN     tar xzvf prebuilt.tar.gz    \
     &&  rm dl.tar
 
 # ENV PATH="$PATH:/home/iris/x-tools/riscv64-nucleus_labs-linux-gnu/bin"
-# ENV CCPREFIX="/home/iris/x-tools/riscv64-nucleus_labs-linux-gnu/bin/riscv64-nucleus_labs-linux-gnu-"
 ENV CROSS_COMPILE=riscv64-unknown-linux-gnu-
 # ENV LDFLAGS=--static
 
+RUN     mkdir -p /artifacts/tina/logs
+
 ADD     deps/build/build-tina.sh    /builds/linux-tina/build.sh
 RUN     chmod +x build.sh                   \
-    &&  ./build.sh 2>&1 | tee build.tina
-
-CMD ["/bin/bash"]
-
-# RUN     cd linux-tina             \
-#     &&  make ARCH=riscv defconfig \
-#     &&  make ARCH=riscv
-
-
-# COPY --from=FETCH_STAGE /sources/busybox    /home/iris/builds/busybox
-
-# RUN     cd busybox \
-#     &&  make defconfig \
-#     &&  make
-
-# RUN     mkdir rootfs \
-#     &&  make -C busybox install CONFIG_PREFIX=../rootfs
+    &&  ./build.sh 2>&1 | tee /artifacts/tina/logs/build.tina
+RUN     /bin/bash -c "                      \
+                source  build/envsetup.sh   \
+            &&  lunch d1_mq_pro-tina        \
+            &&  muboot                      \
+        " 2>&1 | tee /artifacts/tina/logs/build.muboot
 
 
-# COPY --from=FETCH_STAGE /sources/go         /usr/local
-# ENV PATH=$PATH:/usr/local/go/bin
 
-# COPY    --from=FETCH_STAGE  /sources/ffmpeg     /home/iris/builds/ffmpeg
+RUN     mkdir -p /artifacts/tina/u-boot/ /artifacts/tina/dts /artifacts/tina/out /artifacts/tina/toolchain
+RUN     mv /builds/linux-tina/lichee/brandy-2.0/u-boot-2018/u-boot*? /artifacts/tina/u-boot/
+RUN     mv /builds/linux-tina/lichee/linux-5.4/arch/riscv/boot/dts/sunxi/*?.dt*? /artifacts/tina/dts/
+RUN     mv /builds/linux-tina/out/d1-mq_pro/*?.img /artifacts/tina/out/
 
-# RUN     cd ffmpeg                                           \
-#     &&  ./configure                                         \
+ADD deps/build/go1.20.5.linux-amd64.tar.gz /builds
+
+ENV STAGING_DIR=/builds/linux-tina/out/d1-mq_pro/staging_dir/toolchain
+ENV PATH=${PATH}:/builds/linux-tina/out/d1-mq_pro/staging_dir/toolchain/bin
+
+ENV GOOS=linux
+ENV GOARCH=riscv64
+ENV CGO_ENABLED=0
+ENV CC=riscv64-unknown-linux-gnu-gcc
+ENV GOROOT_BOOTSTRAP=/builds/go
+
+COPY    --from=FETCH_STAGE /sources/goroot     /builds/goroot
+
+WORKDIR /builds/goroot/src
+
+RUN     ./make.bash | tee /builds/goroot/build.go   \
+    &&  rm -rf /builds/go
+
+RUN     mkdir -p /artifacts/go                                          \
+    &&  cp /builds/goroot/bin/linux_riscv64/go /artifacts/go/go         \
+    &&  cp /builds/goroot/bin/linux_riscv64/gofmt /artifacts/go/gofmt
+
+ENV PATH=${PATH}:/builds/goroot/bin
+
+COPY    --from=FETCH_STAGE  /sources/mediamtx   /builds/mediamtx
+
+WORKDIR /builds/mediamtx
+
+RUN     go build .
+
+RUN     cp mediamtx /artifacts/mediamtx
+
+
+ENV CCPREFIX="riscv64-unknown-linux-gnu-"
+
+COPY    --from=FETCH_STAGE  /sources/ffmpeg     /builds/ffmpeg
+
+WORKDIR /builds/ffmpeg
+
+# RUN     ./configure                                         \
 #             --arch=riscv64                                  \
 #             --target-os=linux                               \
 #             --cross-prefix=${CCPREFIX}                      \
-#             --prefix=/home/iris/builds/ffmpeg/build         \
+#             --prefix=/builds/ffmpeg/build                   \
 #     &&  make
 
-# # RUN     find / -name ffmpeg -type f
-
-# COPY    --from=FETCH_STAGE  /sources/mediamtx   /home/iris/builds/mediamtx
-
-# ENV GOOS=linux
-# ENV GOARCH=riscv64
-# ENV CGO_ENABLED=1
-# ENV CC=riscv64-nucleus_labs-linux-gnu-gcc
-# RUN     cd mediamtx             \
-#     &&  go build .
-
-
+# CMD ["/bin/bash"]
 
 # FROM ubuntu:22.04 AS DISK_STAGE
 
@@ -210,13 +217,15 @@ CMD ["/bin/bash"]
 #             v4l-utils               \
 #             usbutils
 
-# COPY --from=DISK_STAGE  /disk/busybox-disk                                busybox-disk
-# COPY --from=BUILD_STAGE /home/iris/builds/linux/arch/riscv/boot/Image     linux.Image
+
+# # COPY --from=DISK_STAGE  /disk/busybox-disk                                  busybox-disk
+# COPY --from=BUILD_STAGE /artifacts                                          /artifacts
+# # COPY --from=BUILD_STAGE /home/iris/builds/linux/arch/riscv/boot/Image       linux.Image
 # # COPY --from=BUILD_STAGE /builds/sun20i-d1-mangopi-mq-pro.dtb    \
 # #     sun20i-d1-mangopi-mq-pro.dtb
 
-# ADD doorbellian-qemu.sh doorbellian-qemu.sh
+# ADD deps/run/doorbellian-qemu.sh doorbellian-qemu.sh
 # RUN chmod +x doorbellian-qemu.sh
 
-# CMD ["/doorbellian/doorbellian-qemu.sh"]
+# # CMD ["/doorbellian/doorbellian-qemu.sh"]
 # CMD ["/bin/bash"]

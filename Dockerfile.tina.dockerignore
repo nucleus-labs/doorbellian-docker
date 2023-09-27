@@ -10,4 +10,9 @@ flake.nix
 flake.lock
 highlight.css
 
+tina/.git/
+
 deps/rootfs/ffmpeg-2.7.6.tar.xz
+
+out/
+mnt/
