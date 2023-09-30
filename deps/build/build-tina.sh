@@ -6,4 +6,4 @@ source  build/envsetup.sh
 lunch d1_mq_pro-tina
 
 make ARCH=riscv .config
-make ARCH=riscv -j${JOBS}
+make ARCH=riscv -j$(( ${JOBS} + 1 ))

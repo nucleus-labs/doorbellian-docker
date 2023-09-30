@@ -16,6 +16,7 @@ auto_select=0
 image_tag="dev"
 extra_args=()
 
+
 # ================================================================================================
 #                                            GLOBALS
 DEPENDENCIES=("tput" "cam" "lsusb" "docker" "buildg")
@@ -270,6 +271,12 @@ function flag_name_no_cache () {
     extra_args+=("--no-cache")
 }
 
+add_flag "-" "stage" "docker build stage to build" 1
+function flag_name_stage () {
+    extra_args+=("--target ${arguments[0]}")
+    arr_pop arguments 0
+}
+
 # ================================================================================================
 #                                             TARGETS
 add_target "usb" "list found camera devices"
@@ -374,11 +381,11 @@ function target_kill () {
     [[ ${#container_ids[@]} -eq 0 ]] && echo "No containers to kill." && return
 
     for container_id in "${container_ids[@]}"; do
-        docker kill "$container_id" 2>&1 >/dev/null
-        [[ $? -eq 0 ]] && echo "Container $container_id killed."
+        docker kill "${container_id}" 2>&1 >/dev/null
+        [[ $? -eq 0 ]] && echo "Container ${container_id} killed."
 
-        docker rm "$container_id"
-        [[ $? -eq 0 ]] && echo "Container $container_id deleted."
+        docker rm "${container_id}"
+        [[ $? -eq 0 ]] && echo "Container ${container_id} deleted."
     done
 }
 

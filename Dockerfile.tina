@@ -1,4 +1,4 @@
-FROM ubuntu:22.04 AS FETCH_STAGE
+FROM ubuntu:22.04 AS fetch_stage
 
 RUN     apt-get update          \
    &&  apt-get upgrade -y      \
@@ -11,9 +11,6 @@ WORKDIR /sources
 
 # tina linux is based on linux 5.4
 # RUN     git clone https://github.com/nucleus-labs/Tina-Linux linux-tina
-# RUN     wget https://go.dev/dl/go1.20.5.linux-amd64.tar.gz                              \
-#    &&  tar -xzf go1.20.5.linux-amd64.tar.gz                                             \
-#    &&  rm go1.20.5.linux-amd64.tar.gz
 RUN     git clone https://go.googlesource.com/go goroot                                 \
     &&  cd goroot                                                                       \
     &&  git checkout go1.20.5
@@ -24,34 +21,9 @@ RUN     git clone https://github.com/bluenviron/mediamtx                        
 
 
 
-FROM ubuntu:22.04 AS BUILD_STAGE
+FROM ubuntu:22.04 AS build_stage_init
 
 ARG JOBS=1
-
-# RUN     apt-get update              \
-#     &&  apt-get upgrade
-# RUN     apt-get install -y          \
-#             build-essential         \
-#             device-tree-compiler    \
-#             flex                    \
-#             bison                   \
-#             bc                      \
-#             git                     \
-#             texinfo                 \
-#             pkg-config              \
-#             help2man                \
-#             libtool-bin             \
-#             unzip                   \
-#             gawk                    \
-#             libncurses5-dev         \
-#             wget                    \
-#             curl                    \
-#             rsync                   \
-#             python3.10              \
-#             bzip2                   \
-#             curl                    \
-#             gawk                    \
-#             subversion
 
 ENV     DEBIAN_FRONTEND=noninteractive
 RUN     apt-get update          \
@@ -86,6 +58,9 @@ RUN     apt-get update          \
             nano                \
             openssl             \
             bc                  \
+            binwalk             \
+            xxd                 \
+            busybox             \
             # help2man            \
             # texinfo             \
             # autoconf            \
@@ -96,6 +71,8 @@ RUN     apt-get update          \
 
 ARG SIGN_NAME
 ARG SIGN_EMAIL
+
+FROM build_stage_init AS build_stage_tina
 
 # ENV PATH=$PATH:/usr/local/bin/m4
 
@@ -125,23 +102,25 @@ RUN     mkdir -p /artifacts/tina/logs
 ADD     deps/build/build-tina.sh    /builds/linux-tina/build.sh
 RUN     chmod +x build.sh                   \
     &&  ./build.sh 2>&1 | tee /artifacts/tina/logs/build.tina
+
+ENV STAGING_DIR=/builds/linux-tina/out/d1-mq_pro/staging_dir/toolchain
+ENV PATH=${PATH}:/builds/linux-tina/out/d1-mq_pro/staging_dir/toolchain/bin
+
 RUN     /bin/bash -c "                      \
                 source  build/envsetup.sh   \
             &&  lunch d1_mq_pro-tina        \
             &&  muboot                      \
+            &&  pack                        \
         " 2>&1 | tee /artifacts/tina/logs/build.muboot
 
+RUN     mkdir -p /artifacts/tina/u-boot/ /artifacts/tina/dts /artifacts/tina/out
+RUN     cp /builds/linux-tina/lichee/linux-5.4/arch/riscv/boot/dts/sunxi/*?.dt*? /artifacts/tina/dts/
+RUN     cp /builds/linux-tina/out/d1-mq_pro/*?.img /artifacts/tina/out/
+RUN     cp /builds/linux-tina/lichee/brandy-2.0/u-boot-2018/u-boot*? /artifacts/tina/u-boot/
 
-
-RUN     mkdir -p /artifacts/tina/u-boot/ /artifacts/tina/dts /artifacts/tina/out /artifacts/tina/toolchain
-RUN     mv /builds/linux-tina/lichee/brandy-2.0/u-boot-2018/u-boot*? /artifacts/tina/u-boot/
-RUN     mv /builds/linux-tina/lichee/linux-5.4/arch/riscv/boot/dts/sunxi/*?.dt*? /artifacts/tina/dts/
-RUN     mv /builds/linux-tina/out/d1-mq_pro/*?.img /artifacts/tina/out/
+FROM build_stage_tina AS build_stage_mediamtx
 
 ADD deps/build/go1.20.5.linux-amd64.tar.gz /builds
-
-ENV STAGING_DIR=/builds/linux-tina/out/d1-mq_pro/staging_dir/toolchain
-ENV PATH=${PATH}:/builds/linux-tina/out/d1-mq_pro/staging_dir/toolchain/bin
 
 ENV GOOS=linux
 ENV GOARCH=riscv64
@@ -170,6 +149,7 @@ RUN     go build .
 
 RUN     cp mediamtx /artifacts/mediamtx
 
+FROM build_stage_mediamtx AS build_stage
 
 ENV CCPREFIX="riscv64-unknown-linux-gnu-"
 
@@ -182,9 +162,9 @@ WORKDIR /builds/ffmpeg
 #             --target-os=linux                               \
 #             --cross-prefix=${CCPREFIX}                      \
 #             --prefix=/builds/ffmpeg/build                   \
-#     &&  make
+#     &&  make -j$(( ${JOBS} + 1))
 
-# CMD ["/bin/bash"]
+CMD ["/bin/bash"]
 
 # FROM ubuntu:22.04 AS DISK_STAGE
 
@@ -207,25 +187,25 @@ WORKDIR /builds/ffmpeg
 #     &&  mkfs.ext4 busybox-disk -d rootfs
 
 
-# FROM ubuntu:22.04 AS RUN_STAGE
+FROM ubuntu:22.04 AS run_stage
 
-# WORKDIR /doorbellian
+WORKDIR /doorbellian
 
-# RUN     apt-get update              \
-#     &&  apt-get install -y          \
-#             qemu-system-riscv64     \
-#             v4l-utils               \
-#             usbutils
+RUN     apt-get update              \
+    &&  apt-get install -y          \
+            qemu-system-riscv64     \
+            v4l-utils               \
+            usbutils
 
 
 # # COPY --from=DISK_STAGE  /disk/busybox-disk                                  busybox-disk
-# COPY --from=BUILD_STAGE /artifacts                                          /artifacts
+COPY --from=BUILD_STAGE /artifacts                                          /artifacts
 # # COPY --from=BUILD_STAGE /home/iris/builds/linux/arch/riscv/boot/Image       linux.Image
 # # COPY --from=BUILD_STAGE /builds/sun20i-d1-mangopi-mq-pro.dtb    \
 # #     sun20i-d1-mangopi-mq-pro.dtb
 
-# ADD deps/run/doorbellian-qemu.sh doorbellian-qemu.sh
-# RUN chmod +x doorbellian-qemu.sh
+ADD deps/run/doorbellian-qemu.sh doorbellian-qemu.sh
+RUN chmod +x doorbellian-qemu.sh
 
-# # CMD ["/doorbellian/doorbellian-qemu.sh"]
-# CMD ["/bin/bash"]
+# CMD ["/doorbellian/doorbellian-qemu.sh"]
+CMD ["/bin/bash"]
