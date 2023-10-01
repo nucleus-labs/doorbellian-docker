@@ -14,7 +14,7 @@ WORKDIR /sources
 RUN     git clone https://go.googlesource.com/go goroot                                 \
     &&  cd goroot                                                                       \
     &&  git checkout go1.20.5
-RUN     git clone --depth=1 -b release/6.0 https://git.ffmpeg.org/ffmpeg
+RUN     git clone --depth=1 -b release/6.0 https://github.com/nucleus-labs/ffmpeg
 RUN     git clone https://github.com/bluenviron/mediamtx                                \
     &&  cd mediamtx                                                                     \
     &&  git checkout 91ada9bf07487371f2c0189ab73201ddbaef468e
@@ -157,14 +157,21 @@ COPY    --from=FETCH_STAGE  /sources/ffmpeg     /builds/ffmpeg
 
 WORKDIR /builds/ffmpeg
 
-# RUN     ./configure                                         \
-#             --arch=riscv64                                  \
-#             --target-os=linux                               \
-#             --cross-prefix=${CCPREFIX}                      \
-#             --prefix=/builds/ffmpeg/build                   \
-#     &&  make -j$(( ${JOBS} + 1))
+RUN     ./configure                                         \
+            --arch=riscv64                                  \
+            --target-os=linux                               \
+            --cross-prefix=${CCPREFIX}                      \
+            --prefix=/builds/ffmpeg/build                   \
+            --enable-static                                 \
+            # --
+    &&  make -j$(( ${JOBS} + 1))
 
-CMD ["/bin/bash"]
+RUN     mkdir -p /artifacts/ffmpeg                              \
+    &&  cp /builds/ffmpeg/ffmpeg    /artifacts/ffmpeg/ffmpeg    \
+    &&  cp /builds/ffmpeg/ffmpeg_g  /artifacts/ffmpeg/ffmpeg_g  \
+    &&  cp /builds/ffmpeg/ffprobe   /artifacts/ffmpeg/ffprobe   \
+    &&  cp /builds/ffmpeg/ffprobe_g /artifacts/ffmpeg/ffprobe_g
+
 
 # FROM ubuntu:22.04 AS DISK_STAGE
 
