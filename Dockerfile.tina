@@ -14,6 +14,7 @@ WORKDIR /sources
 RUN     git clone https://go.googlesource.com/go goroot                                 \
     &&  cd goroot                                                                       \
     &&  git checkout go1.20.5
+RUN     git clone --depth=1 https://github.com/timothytylee/libgsm
 RUN     git clone --depth=1 -b release/6.0 https://github.com/nucleus-labs/ffmpeg
 RUN     git clone https://github.com/bluenviron/mediamtx                                \
     &&  cd mediamtx                                                                     \
@@ -149,28 +150,60 @@ RUN     go build .
 
 RUN     cp mediamtx /artifacts/mediamtx
 
-FROM build_stage_mediamtx AS build_stage
-
-ENV CCPREFIX="riscv64-unknown-linux-gnu-"
+FROM build_stage_mediamtx AS build_stage_ffdeps
 
 COPY    --from=FETCH_STAGE  /sources/ffmpeg     /builds/ffmpeg
+ENV CCPREFIX="riscv64-unknown-linux-gnu-"
+RUN mkdir -p /builds/ffmpeg/deps/lib /builds/ffmpeg/deps/include
+ENV PATH=${PATH}:/builds/ffmpeg/deps
+
+COPY    --from=fetch_stage  /sources/libgsm     /builds/ffdeps/libgsm
+
+RUN     cp -r /builds/ffdeps/libgsm/inc /builds/ffmpeg/deps/include/gsm
+
+WORKDIR /builds/ffdeps/libgsm
+
+RUN     make -j$(( ${JOBS} + 1 )) CC=${CCPREFIX}gcc     \
+    &&  cp lib/libgsm.a /builds/ffmpeg/deps/lib/libgsm.a
+
+
+FROM build_stage_ffdeps AS build_stage
 
 WORKDIR /builds/ffmpeg
 
-RUN     ./configure                                         \
-            --arch=riscv64                                  \
-            --target-os=linux                               \
-            --cross-prefix=${CCPREFIX}                      \
-            --prefix=/builds/ffmpeg/build                   \
-            --enable-static                                 \
-            # --
-    &&  make -j$(( ${JOBS} + 1))
+RUN     ./configure                                             \
+            --disable-doc                                       \
+            --disable-runtime-cpudetect                         \
+            --disable-ffplay                                    \
+            --disable-ffprobe                                   \
+            --arch=riscv64                                      \
+            --target-os=linux                                   \
+            --cross-prefix=${CROSS_COMPILE}                     \
+            --enable-gpl                                        \
+            --enable-version3                                   \
+            --enable-static                                     \
+            --disable-shared                                    \
+            --disable-libfdk_aac                                \
+            --enable-libvpx                                     \
+            --enable-libx264                                    \
+            --enable-libx265                                    \
+            --enable-nonfree                                    \
+            --enable-libopencore-amrnb                          \
+            --enable-libopencore-amrwb                          \
+            --enable-libgsm                                     \
+            --enable-libxvid                                    \
+            --extra-ldflags=-L/builds/ffmpeg/deps/lib           \
+            --extra-cflags=-I/builds/ffmpeg/deps/include        \
+            --extra-cxxflags=-I/builds/ffmpeg/include           \
+    &&  make -j$(( ${JOBS} + 1)) \
+    # || return 0
+    && :
 
-RUN     mkdir -p /artifacts/ffmpeg                              \
-    &&  cp /builds/ffmpeg/ffmpeg    /artifacts/ffmpeg/ffmpeg    \
-    &&  cp /builds/ffmpeg/ffmpeg_g  /artifacts/ffmpeg/ffmpeg_g  \
-    &&  cp /builds/ffmpeg/ffprobe   /artifacts/ffmpeg/ffprobe   \
-    &&  cp /builds/ffmpeg/ffprobe_g /artifacts/ffmpeg/ffprobe_g
+# RUN     mkdir -p /artifacts/ffmpeg                              \
+#     &&  cp /builds/ffmpeg/ffmpeg    /artifacts/ffmpeg/ffmpeg    \
+#     &&  cp /builds/ffmpeg/ffmpeg_g  /artifacts/ffmpeg/ffmpeg_g  \
+#     &&  cp /builds/ffmpeg/ffprobe   /artifacts/ffmpeg/ffprobe   \
+#     &&  cp /builds/ffmpeg/ffprobe_g /artifacts/ffmpeg/ffprobe_g
 
 
 # FROM ubuntu:22.04 AS DISK_STAGE
@@ -205,14 +238,10 @@ RUN     apt-get update              \
             usbutils
 
 
-# # COPY --from=DISK_STAGE  /disk/busybox-disk                                  busybox-disk
-COPY --from=BUILD_STAGE /artifacts                                          /artifacts
-# # COPY --from=BUILD_STAGE /home/iris/builds/linux/arch/riscv/boot/Image       linux.Image
-# # COPY --from=BUILD_STAGE /builds/sun20i-d1-mangopi-mq-pro.dtb    \
-# #     sun20i-d1-mangopi-mq-pro.dtb
-
 ADD deps/run/doorbellian-qemu.sh doorbellian-qemu.sh
 RUN chmod +x doorbellian-qemu.sh
+
+COPY --from=BUILD_STAGE /artifacts                                          /artifacts
 
 # CMD ["/doorbellian/doorbellian-qemu.sh"]
 CMD ["/bin/bash"]
