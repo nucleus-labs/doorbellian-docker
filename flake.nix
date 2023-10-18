@@ -22,7 +22,22 @@
       ];
 
       perSystem = { pkgs, system, ... }: {
+        _module.args.pkgs = import nixpkgs {
+          inherit system;
+          overlays = [
+            devshell.overlays.default
+          ];
+
+          config.permittedInsecurePackages = [
+            "python-2.7.18.6"
+          ];
+        };
+
         devshells.default = {
+          imports = [
+            "${pkgs.devshell.extraModulesDir}/language/c.nix"
+          ];
+
           packages = with pkgs; [
             automake
             autoconf
@@ -34,9 +49,7 @@
             file
             flock
             flex
-            gcc
-            openssl.dev
-            ncurses.dev
+            #openssl.dev
             perl
             rsync
             unzip
@@ -44,7 +57,25 @@
             which
             help2man
             tree
+            zlib
+            python
           ];
+
+          language.c = {
+            compiler = pkgs.gcc;
+
+            includes = with pkgs; [
+              ncurses.dev
+              zlib
+              zlib.static
+              openssl
+            ];
+
+            libraries = with pkgs; [
+              zlib.static
+              ncurses
+            ];
+          };
 
           commands = [
             {
@@ -57,8 +88,9 @@
             }
             {
               category = "tools";
-              package = pkgs.libcamera;
+              # package = pkgs.libcamera;
               name = "cam";
+              command = "${pkgs.libcamera}/bin/cam -l $@";
             }
             {
               category = "tools";
@@ -67,10 +99,17 @@
           ];
         
           env = [
+            # {
+            #   name = "LD_LIBRARY_PATH";
+            #   unset = true;
+            # }
             {
-              name = "LD_LIBRARY_PATH";
-              unset = true;
+              name = "PATH";
+              prefix = "";
             }
+            { name = "INCLUDE_PATH"; eval = "$C_INCLUDE_PATH"; }
+            { name = "INCLUDE"; eval = "$C_INCLUDE_PATH"; }
+            { name = "LIBRARY_PATH"; eval = "$LD_LIBRARY_PATH"; }
           ];
         };
 

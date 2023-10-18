@@ -252,12 +252,8 @@ add_flag "-" "tina" "a shorthand flag for tina-based doorbellian development ; d
 function flag_name_tina () {
     dockerfile="Dockerfile.tina"
     image_tag="tina"
-    extra_args+=("--build-arg 'SIGN_NAME=${SIGN_NAME}'")
-    extra_args+=("--build-arg 'SIGN_EMAIL=${SIGN_EMAIL}'")
     debug "using dockerfile:    '${dockerfile}'"
     debug "using tag:           '${image_tag}'"
-    debug "using signing name:  '${SIGN_NAME}'"
-    debug "using signing email: '${SIGN_EMAIL}'"
 }
 
 add_flag "-" "arg" "additional arguments to pass to the target ; can be used multiple times" 1
@@ -312,7 +308,7 @@ function target_clean () {
         [[ ! -z "${image_tag}" ]] && docker image rm --force doorbellian:${image_tag} || docker image rm --force doorbellian
     fi
     docker images -f "dangling=true" --format "{{.ID}}" | xargs -r docker rmi
-    docker buildx prune -f 2> /dev/null
+    docker system prune -f --filter "ancestor=doorbellian:${image_tag}" 2> /dev/null
     debug "cleaned."
 }
 
@@ -324,7 +320,7 @@ function target_build () {
     return $?
 }
 
-add_target "extract" "extract logs from the constructed image"
+add_target "extract" "extract files from a docker container"
 function target_extract () {
     if [[ -n "$(docker images -q doorbellian:${image_tag} 2> /dev/null)" ]]; then
         local extracts=(${arguments[@]})
@@ -345,6 +341,31 @@ function target_extract () {
             docker cp "${container_id}:${_from}" "${_to}" 2>&1 >/dev/null
             echo "Done Extracting."
         done
+        [[ ${created} -eq 1 ]] && docker rm -v ${container_id} >/dev/null
+    else
+        echo "No valid images found to extract from! Please run '${SCRIPT_NAME} --tag ${image_tag} build'"
+    fi
+}
+
+add_target "inject" "inject files into a docker container"
+function target_inject () {
+    if [[ -n "$(docker images -q doorbellian:${image_tag} 2> /dev/null)" ]]; then
+        local inject=(${arguments[@]})
+        local container_ids=($(docker ps -a --filter "ancestor=doorbellian:${image_tag}" --format '{{.ID}}' 2>/dev/null))
+        local container_id=""
+        local created=0
+
+        [[ ${#container_ids[@]} -gt 1 ]] && IFS=',' echo "[ERROR]: too many available containers: (${container_id[*]})" && exit 20
+        [[ ${#container_ids[@]} -eq 0 ]] && created=1 && container_id="$(docker create doorbellian:${image_tag})" || container_id=${container_ids[0]}
+
+        IFS=';' read -ra injected_parts <<< "${inject}"
+        local _from="${injected_parts[0]}"
+        local _to="${injected_parts[0]}"
+        [[ ${#injected_parts} -gt 1 ]] && _to="${injected_parts[1]}"
+        echo "Injecting '${_from}' to ${container_id:0:8}:'${_to}'"
+        docker cp "${_from}" ${container_id}:"${_to}" >/dev/null
+        echo "Done Injecting."
+
         [[ ${created} -eq 1 ]] && docker rm -v ${container_id} 2>&1 >/dev/null
     else
         echo "No valid images found to extract from! Please run '${SCRIPT_NAME} --tag ${image_tag} --dockerfile ${dockerfile} build'"
@@ -384,7 +405,7 @@ function target_kill () {
         docker kill "${container_id}" 2>&1 >/dev/null
         [[ $? -eq 0 ]] && echo "Container ${container_id} killed."
 
-        docker rm "${container_id}"
+        docker rm "${container_id}" 2>&1 >/dev/null
         [[ $? -eq 0 ]] && echo "Container ${container_id} deleted."
     done
 }
