@@ -1,0 +1,3 @@
+[submodule "linux-tina"]
+	path = linux-tina
+	url = https://github.com/nucleus-labs/Tina-Linux.git
