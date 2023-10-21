@@ -37,12 +37,19 @@ for usb_device in ${usb_list[@]}; do
     usb_devices="${usb_devices} -device usb-host,bus=usb.0,hostbus=${host_bus},hostaddr=${host_addr}"
 done
 
+DTB=/artifacts/tina/dts/board.dtb
+
+IMG_PREFIX=/artifacts/tina/out
+BOOT_IMG=boot.img
+KERNEL_IMG=d1-mq_pro-uImage
+DISK_IMG=rootfs.img
+
 qemu-system-riscv64 \
     -nographic \
     -machine virt \
-    -kernel linux.Image \
+    -kernel ${IMG_PREFIX}/${KERNEL_IMG} \
     -append "root=/dev/vda rw console=ttyS0" \
-    -drive file=busybox-disk,format=raw,id=hd0 \
+    -drive file=${IMG_PREFIX}/${DISK_IMG},format=raw,id=hd0 \
     -device virtio-blk-device,drive=hd0 \
     \
     -device nec-usb-xhci,id=usb \

@@ -3,8 +3,6 @@
 # ================================================================================================
 #                                            GLOBALS
 
-SCRIPT_NAME=$0
-
 declare -A valid_flags
 declare -a valid_flag_names
 
@@ -16,7 +14,6 @@ declare -A valid_flag_names_arguments
 declare -a flag_schedule
 
 
-declare -a valid_targets
 declare -a valid_targets_arguments
 declare -a valid_targets_arguments_descriptions
 
@@ -24,6 +21,7 @@ declare -a valid_targets_arguments_descriptions
 declare -a arguments
 arguments+=($*)
 
+declare -a builtin_targets
 
 # ================================================================================================
 #                                              UTILS
@@ -78,18 +76,49 @@ function arr_max_value () {
 
 # (1: array name (global); 2: index to pop; 3: array type (-a/-A))
 function arr_pop () {
-    [[ -z "$1" ]]           && caller && echo "[ERROR]: Array name is empty!"                       && exit 90
+    [[ -z "$1" ]] && {
+        caller
+        echo "[ERROR]: Array name is empty!" >&2
+        exit 90
+    }
+
     local arr_declare="$(declare -p "$1" 2>/dev/null)"
-    [[ -z "${!1+x}" || "${arr_declare}" != "declare"* ]]                                            \
-                            && caller && echo "[ERROR]: Variable '$1' does not exist or is empty!"  && exit 81
-    [[ ! -v "$1"    || "${arr_declare}" != "declare -a"* && "${arr_declare}" != "declare -A"* ]]    \
-                            && caller && echo "[ERROR]: Variable '$1' is not an array!"             && exit 82
-    [[ ! $2 =~ ^[0-9]+$ ]]  && caller && echo "[ERROR]: Index '$2' is not a valid number!"          && exit 93
-    [[ ! -v $1[$2] ]]       && caller && echo "[ERROR]: Array element at index $2 does not exist!"  && exit 94
-    [[ ! -z "$3" && "$3" != "-a" && "$3" != "-A" ]]                                                 \
-                            && caller && echo "[ERROR]: Array type '$3' is not a valid type!"       && exit 95
+
+    [[ -z "${!1+x}" || "${arr_declare}" != "declare"* ]] && {
+        caller
+        echo "[ERROR]: Variable '$1' does not exist or is empty!" >&2
+        exit 91
+    }
+
+    [[ ! -v "$1"    || "${arr_declare}" != "declare -a"* && "${arr_declare}" != "declare -A"* ]] && {
+        caller
+        echo "[ERROR]: Variable '$1' is not an array!" >&2
+        exit 92
+    }
+
+    [[ ! $2 =~ ^[0-9]+$ ]]  && {
+        caller
+        echo "[ERROR]: Index '$2' is not a valid number!" >&2
+        exit 93
+    }
+
+    [[ ! -v $1[$2] ]]       && {
+        caller
+        echo "[ERROR]: Array element at index $2 does not exist!" >&2
+        exit 94
+    }
+
+    [[ ! -z "$3" && "$3" != "-a" && "$3" != "-A" ]] && {
+        caller
+        echo "[ERROR]: Array type '$3' is not a valid type!" >&2
+        exit 95
+    }
     eval "$1=(\${$1[@]:0:$2} \${$1[@]:$2+1})"
 }
+
+# ================================================================================================
+#                                            BUILT-INS
+
 
 # ================================================================================================
 #                                       CORE FUNCTIONALITY
@@ -211,179 +240,246 @@ function validate_target () {
 
     arr_pop arguments 0
 
-    # check if the supplied target is valid
-    for value in "${valid_targets[@]}"; do
-        if [[ "$target" = "$value" ]]; then
-            valid_target_found=1
-            break
-        fi
-    done
+    [[ ! -f "targets/${target}.bash" ]] && {
+        echo "Target file 'targets/${target}.bash' not found!" >&2
+        exit 255
+    }
 
-    # if no valid target matching the supplied target is found, error
-    if [[ $valid_target_found -eq 0 ]]; then
-        caller && echo "[ERROR]: '$target' is not a valid target."
-        # print_help
-        exit 2
-    else
-        eval "target_${target}"
-    fi
+    source "targets/${target}.bash"
+
+    [[ $(type -t "target_${target}") != function ]] && {
+        echo "Target function 'target_${target}' was not found in 'targets/${target}.bash'!" >&2
+        exit 255
+    }
+
+    eval "target_${target}"
 }
 
 function execute_flags () {
     return
 }
 
-function print_help () {
-    local cols=$(tput cols)
+# function print_help () {
+#     local cols=$(tput cols)
 
-    # TODO: implement usage of flag data
+#     # TODO: implement usage of flag data
 
-    local flags=(${!valid_flag_names[@]})
-    local flag_names=(${valid_flag_names[@]})
+#     local flags=(${!valid_flag_names[@]})
+#     local flag_names=(${valid_flag_names[@]})
 
-    local usage_flags=""
-    local usage_targets=""
+#     local usage_flags=""
+#     local usage_targets=""
 
-    local formatted_description=""
-    local formatted_description_linecount=0
+#     local formatted_description=""
+#     local formatted_description_linecount=0
 
-    # (1: description; 2: left-padding, 3: line-width)
-    function format_description () {
-        [[ -z "$1" ]]           && caller && echo "[ERROR]: description is empty!"                  && exit 30
-        [[ ! $2 =~ ^[0-9]+$ ]]  && caller && echo "[ERROR]: left-padding is not a valid number!"    && exit 31
-        [[ ! $3 =~ ^[0-9]+$ ]]  && caller && echo "[ERROR]: line width is not a valid number!"      && exit 32
+#     # (1: description; 2: left-padding, 3: line-width)
+#     function format_description () {
+#         [[ -z "$1" ]]           && caller && echo "[ERROR]: description is empty!"                  && exit 30
+#         [[ ! $2 =~ ^[0-9]+$ ]]  && caller && echo "[ERROR]: left-padding is not a valid number!"    && exit 31
+#         [[ ! $3 =~ ^[0-9]+$ ]]  && caller && echo "[ERROR]: line width is not a valid number!"      && exit 32
 
-        formatted_description=""
-        formatted_description_linecount=1
-        local description="$1"
-        local left_padding=$( printf "%${2}s" )
-        local line_width=$3
+#         formatted_description=""
+#         formatted_description_linecount=1
+#         local description="$1"
+#         local left_padding=$( printf "%${2}s" )
+#         local line_width=$3
 
-        local current_line=""
+#         local current_line=""
 
-        IFS=' ' read -ra words <<< "$description"
+#         IFS=' ' read -ra words <<< "$description"
 
-        local used_left_padding="$left_padding"
+#         local used_left_padding="$left_padding"
 
-        for word in "${words[@]}"; do
-            if (( ${#used_left_padding} + ${#current_line} + ${#word} + 1 > $line_width )); then
-                (( ${formatted_description_linecount} == 1 )) && used_left_padding=""
-                formatted_description="${formatted_description}${used_left_padding}${current_line}\n"
-                current_line="${word}"
-                formatted_description_linecount=$(($formatted_description_linecount+1))
-                used_left_padding="$left_padding"
-            else
-                if [[ -z "$current_line" ]]; then # true for i=0
-                    current_line="$word"
-                else
-                    current_line="$current_line $word"
-                fi
-            fi
-        done
+#         for word in "${words[@]}"; do
+#             if (( ${#used_left_padding} + ${#current_line} + ${#word} + 1 > $line_width )); then
+#                 (( ${formatted_description_linecount} == 1 )) && used_left_padding=""
+#                 formatted_description="${formatted_description}${used_left_padding}${current_line}\n"
+#                 current_line="${word}"
+#                 formatted_description_linecount=$(($formatted_description_linecount+1))
+#                 used_left_padding="$left_padding"
+#             else
+#                 if [[ -z "$current_line" ]]; then # true for i=0
+#                     current_line="$word"
+#                 else
+#                     current_line="$current_line $word"
+#                 fi
+#             fi
+#         done
 
-        (( ${formatted_description_linecount} == 1 )) && used_left_padding=""
-        formatted_description="${formatted_description}${used_left_padding}${current_line}\n"
+#         (( ${formatted_description_linecount} == 1 )) && used_left_padding=""
+#         formatted_description="${formatted_description}${used_left_padding}${current_line}\n"
+#     }
+
+#     # flag_arg_widths=()
+#     # for flag_data in "${valid_flag_data[@]}"; do
+#     #     local flag_data_parts=
+#     #     local description=
+#     #     local arguments=
+#     #     local arg_descriptions=
+
+#     #     IFS='|' read -ra flag_data_parts <<< "${flag_data}"
+
+#     #     for part in "${flag_data_parts[@]}"; do
+#     #         eval "$part"
+#     #     done
+
+#     #     for arg in "${arguments[@]}"; do
+#     #         max_flag_arg_width+=(${#arg})
+#     #     done
+#     # done
+
+
+
+#     local max_flag_width=$(     arr_max_length flag_names     \-A )
+#     # local max_flag_arg_width=$( arr_max_value flag_arg_widths )
+#     local max_target_width=$(   arr_max_length valid_targets  \-a )
+
+#     local max_width=$(($max_flag_width > $max_target_width ? $max_flag_width : $max_target_width ))
+
+#     for ((i = 0; i < ${#flags[@]}; i++)); do
+#         local flag="${flags[$i]}"
+#         local flag_name="${flag_names[$i]}"
+#         local flag_data="${valid_flag_data[$flag_name]}"
+
+#         local flag_padding=$((${#flag_name} <= $max_width ? $max_width - ${#flag_name} + 1 : 1))
+#         local flag_spaces=$(printf "%${flag_padding}s")
+
+#         local line="    -${flag}   | --${flag_name}${flag_spaces}| "
+#         echo "${flag}"
+#         [[ ${flag} == "-" ]] && line="           --${flag_name}${flag_spaces}| "
+
+#         local flag_data_parts=
+#         local description=
+#         local arguments=
+#         local arg_descriptions=
+
+#         IFS='|' read -ra flag_data_parts <<< "${flag_data}"
+
+#         for part in "${flag_data_parts[@]}"; do
+#             eval "$part"
+#         done
+
+#         format_description "${description}" ${#line} $((${cols} - 4))
+
+#         usage_flags+="${line}${formatted_description}\n"
+
+#         # for ((i = 0; i < ${#arguments}; i++)); do
+#         #     local argument="${arguments[$i]}"
+#         #     local arg_description=""
+#         #     line="$(printf "%11s") ${argument}"
+
+#         # done
+#     done
+
+#     format_description=""
+
+#     for ((i = 0; i < ${#valid_targets[@]}; i++)); do
+#         local target="${valid_targets[$i]}"
+
+#         local target_padding=$((${#target} < $max_width ? $max_width - ${#target} + 10 : 1))
+#         local target_spaces=$(printf "%${target_padding}s" " ")
+
+#         local line="    ${target}${target_spaces}| "
+
+#         format_description "${valid_target_descriptions[i]}" ${#line} $((${cols} - 4))
+        
+#         usage_targets="${usage_targets}${line}${formatted_description}\n"
+#     done
+
+#     local small_cols=$(( $cols - 8))
+#     local short_line=$(printf '%*s\n' "$small_cols" | tr ' ' '-')
+#     echo "Usage: $0 [flags, ...] <target> [target_arguments...]"
+#     echo ""
+#     echo "A helpful tool for doorbellian development"
+#     echo ""
+#     echo "Maintained by Maxine Alexander <max.alexander3721@gmail.com>"
+#     echo ""
+#     echo "----${short_line}----"
+#     echo ""
+#     local target_spaces=$(printf "%$(($max_width - 1))s" " ")
+#     echo "    flag | name${target_spaces}| description"
+#     echo "    ${short_line}"
+#     echo -e   "$usage_flags"
+#     echo "----${short_line}----"
+#     target_spaces=$(printf "%$(($max_width + 4))s" " ")
+#     echo "    target${target_spaces}| description"
+#     echo "    ${short_line}"
+#     echo -e   "$usage_targets"
+# }
+
+# add_flag "h" "help" "prints this menu" 0
+# function flag_h () {
+#     print_help
+#     exit 0
+# }
+
+valid_arg_tyes=("any" "number" "string")
+
+function is_builtin () {
+    echo "n" # place-holder
+}
+
+current_target=
+
+declare -a target_arguments
+declare -a target_arg_types
+declare -a target_arg_descs
+
+# (1: name; 2: type; 3: description)
+function add_argument () {
+    local name=$1
+    local type=$2
+    local desc=$3
+
+    local detected_any=0
+
+    [[ x"${type}" == x"" ]] && type="any" && detected_any=1
+
+    [[ x"${name}" != x"" && x"${desc}" != x"" && ${valid_arg_tyes[@]} =~ "${type}" ]] && {
+        echo "add_argument usage is: 'add_argument \"<name>\" \"<${valid_arg_types[*]}>\" \"<description>\"'" >&2
+        echo "What you provided:" >&2
+        [[ ${detected_any} -eq 1 ]] && echo "(auto-detected type as \"any\")" >&2
+        echo "add_argument \"${name}\" \"${type}\" \"${desc}\""
     }
 
-    # flag_arg_widths=()
-    # for flag_data in "${valid_flag_data[@]}"; do
-    #     local flag_data_parts=
-    #     local description=
-    #     local arguments=
-    #     local arg_descriptions=
+    local count=${#target_arguments}
 
-    #     IFS='|' read -ra flag_data_parts <<< "${flag_data}"
+    target_arguments[$count]+=("${name}")
+    target_arg_types[$count]+=("${type}")
+    target_arg_descs[$count]+=("${desc}")
+}
 
-    #     for part in "${flag_data_parts[@]}"; do
-    #         eval "$part"
-    #     done
+function print_help () {
+    # TODO: print help for common flags
 
-    #     for arg in "${arguments[@]}"; do
-    #         max_flag_arg_width+=(${#arg})
-    #     done
-    # done
+    # print help for targets
+    if [[ ${#arguments[@]} -gt 0 ]]; then # subcommand provided?
+        if [[ ! -f "targets/${arguments[0]}.bash" && $(is_builtin "${arguments[0]}") == "n" ]]; then
+            caller
+            echo "No such command '${arguments[0]}'"
+            exit 255
+
+        elif [[ $(is_builtin "${arguments[0]}") == "y" ]]; then
+            # check builtin info
+            return
+        else
+            # source "targets/${arguments[0]}.bash"
+            return
+        fi
+    else # iterate through targets and collect info
+        for file in targets/*.bash; do
+            current_target="${file##*/}"
+            current_target="${current_target%.bash}"
+            
+            target_arguments=()
+            target_arg_types=()
+            target_arg_descs=()
+
+            source ${file}
 
 
-
-    local max_flag_width=$(     arr_max_length flag_names     \-A )
-    # local max_flag_arg_width=$( arr_max_value flag_arg_widths )
-    local max_target_width=$(   arr_max_length valid_targets  \-a )
-
-    local max_width=$(($max_flag_width > $max_target_width ? $max_flag_width : $max_target_width ))
-
-    for ((i = 0; i < ${#flags[@]}; i++)); do
-        local flag="${flags[$i]}"
-        local flag_name="${flag_names[$i]}"
-        local flag_data="${valid_flag_data[$flag_name]}"
-
-        local flag_padding=$((${#flag_name} <= $max_width ? $max_width - ${#flag_name} + 1 : 1))
-        local flag_spaces=$(printf "%${flag_padding}s")
-
-        local line="    -${flag}   | --${flag_name}${flag_spaces}| "
-        echo "${flag}"
-        [[ ${flag} == "-" ]] && line="           --${flag_name}${flag_spaces}| "
-
-        local flag_data_parts=
-        local description=
-        local arguments=
-        local arg_descriptions=
-
-        IFS='|' read -ra flag_data_parts <<< "${flag_data}"
-
-        for part in "${flag_data_parts[@]}"; do
-            eval "$part"
         done
-
-        format_description "${description}" ${#line} $((${cols} - 4))
-
-        usage_flags+="${line}${formatted_description}\n"
-
-        # for ((i = 0; i < ${#arguments}; i++)); do
-        #     local argument="${arguments[$i]}"
-        #     local arg_description=""
-        #     line="$(printf "%11s") ${argument}"
-
-        # done
-    done
-
-    format_description=""
-
-    for ((i = 0; i < ${#valid_targets[@]}; i++)); do
-        local target="${valid_targets[$i]}"
-
-        local target_padding=$((${#target} < $max_width ? $max_width - ${#target} + 10 : 1))
-        local target_spaces=$(printf "%${target_padding}s" " ")
-
-        local line="    ${target}${target_spaces}| "
-
-        format_description "${valid_target_descriptions[i]}" ${#line} $((${cols} - 4))
-        
-        usage_targets="${usage_targets}${line}${formatted_description}\n"
-    done
-
-    local small_cols=$(( $cols - 8))
-    local short_line=$(printf '%*s\n' "$small_cols" | tr ' ' '-')
-    echo "Usage: $0 [flags, ...] <target> [target_arguments...]"
-    echo ""
-    echo "A helpful tool for doorbellian development"
-    echo ""
-    echo "Maintained by Maxine Alexander <max.alexander3721@gmail.com>"
-    echo ""
-    echo "----${short_line}----"
-    echo ""
-    local target_spaces=$(printf "%$(($max_width - 1))s" " ")
-    echo "    flag | name${target_spaces}| description"
-    echo "    ${short_line}"
-    echo -e   "$usage_flags"
-    echo "----${short_line}----"
-    target_spaces=$(printf "%$(($max_width + 4))s" " ")
-    echo "    target${target_spaces}| description"
-    echo "    ${short_line}"
-    echo -e   "$usage_targets"
+    fi
 }
-
-add_flag "h" "help" "prints this menu" 0
-function flag_h () {
-    print_help
-    exit 0
-}
+print_help

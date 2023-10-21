@@ -1,7 +1,5 @@
 FROM ubuntu:22.04 AS fetch_stage
 
-LABEL purpose=doorbellian
-
 RUN     apt-get update          \
    &&  apt-get upgrade -y      \
    &&  apt-get install -y      \
@@ -226,8 +224,6 @@ ENV ROOTFS_DIR=/builds/linux-tina/out/d1-mq_pro/compile_dir/target/rootfs
 
 RUN     cp /artifacts/mediamtx      ${ROOTFS_DIR}/bin/mediamtx
 ADD     deps/rootfs/mediamtx.yml    ${ROOTFS_DIR}/etc/mediamtx.yml
-
-# TODO: copy ffmpeg
 
 # TODO: copy init script
 
