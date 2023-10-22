@@ -225,20 +225,20 @@ function flag_name_jobs () {
     debug "Using -j${JOBS}"
 }
 
-add_flag "-" "dockerfile" "sets the dockerfile to use" 2 "dockerfile" "the dockerfile to use"
+add_flag "-" "dockerfile" "sets the dockerfile to use" 2 "dockerfile" "string" "the dockerfile to use"
 function flag_name_dockerfile () {
     dockerfile="modes/${arguments[0]}"
     arr_pop arguments 0
     debug "using dockerfile '${dockerfile}'"
 }
 
-add_flag "-" "container" "the id for the container that should be used" 1 "container_id" "the id of the docker container that should be used"
+add_flag "-" "container" "the id for the container that should be used" 1 "container_id" "string" "the id of the docker container that should be used"
 function flag_name_container () {
     container_id="${arguments[0]}"
     debug "Using container [${container_id}]"
 }
 
-add_flag "-" "mode" "sets the project mode ; runs 'source modes/\${mode}.bash'" 1
+add_flag "-" "mode" "sets the project mode, runs \"source modes/\${mode}.bash\"" 1
 function flag_name_mode () {
     local mode="modes/${arguments[0]}.bash"
     [[ ! -f "${mode}" ]] && {
@@ -252,7 +252,7 @@ function flag_name_mode () {
     debug "using tag:           '${image_tag}'"
 }
 
-add_flag "-" "arg" "additional arguments to pass to the target ; can be used multiple times" 1
+add_flag "-" "arg" "additional arguments to pass to the target, can be used multiple times" 1
 function flag_name_arg () {
     extra_args+=(${arguments[0]})
     arr_pop arguments 0

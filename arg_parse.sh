@@ -4,24 +4,16 @@
 #                                            GLOBALS
 
 declare -A valid_flags
-declare -a valid_flag_names
+declare -A valid_flag_names
 
-declare -A valid_flag_priorities
-
-declare -A valid_flag_names_descriptions
-declare -A valid_flag_names_arguments
-
-declare -a flag_schedule
-
-
-declare -a valid_targets_arguments
-declare -a valid_targets_arguments_descriptions
-
+declare -A flag_schedule
 
 declare -a arguments
 arguments+=($*)
 
 declare -a builtin_targets
+
+valid_arg_types=("any" "number" "string")
 
 # ================================================================================================
 #                                              UTILS
@@ -122,46 +114,47 @@ function arr_pop () {
 
 # ================================================================================================
 #                                       CORE FUNCTIONALITY
-#  1: flag (single character); 2: flag name; 3: flag description;
-#  4: flag priority; 5: flag argument name; 6: flag argument description
+#  1: flag (single character); 2: name; 3: description; 4: priority;
+#  5: argument name; 6: argument type; 7: argument description
 function add_flag () {
     local flag="$1"
     local name="$2"
-    local description="'$3'"
-    local priority=$4
+    local description="$3"
+    local priority="$4"
     local argument="$5"
-    local arg_descriptions="$6"
+    local argument_type="$6"
+    local arg_description="$7"
 
     # basic validations
-    [[ ${#flag} -eq 0 ]]                && caller && echo "[ERROR]: Flags cannot be empty!"                                         && exit 60
+    [[ x"${flag}" == x"" ]]             && caller && echo "[ERROR]: Flag cannot be empty!"                                          && exit 60
     [[ ${#flag} -gt 1 ]]                && caller && echo "[ERROR]: Flag '${flag}' is invalid! Flags must be a single character!"   && exit 61
-    [[ -z "${description}" ]]           && caller && echo "[ERROR]: Description for flag '${name}' cannot be empty!"                && exit 62
-    [[ -z "${priority}" ]]              && caller && echo "[ERROR]: Must provide a priority for flag '${name}'!"                    && exit 63
+    [[ x"${description}" == x"" ]]      && caller && echo "[ERROR]: Description for flag '${name}' cannot be empty!"                && exit 62
+    [[ x"${priority}" == x"" ]]         && caller && echo "[ERROR]: Must provide a priority for flag '${name}'!"                    && exit 63
     [[ ! ${priority} =~ ^[0-9]+$ ]]     && caller && echo "[ERROR]: Priority <${priority}> for flag '${name}' is not a number!"     && exit 64
+    [[ x"${argument}" != x"" && ! ${valid_arg_types[@]} =~ "${argument_type}" ]] \
+                                        && caller && echo "[ERROR]: Flag argument type for '${name}':'${argument}' (${argument_type}) is invalid!"  && exit 65
 
     # more complex validations
     for key in "${!valid_flags[@]}"; do # iterate over keys
-        [[ "${keys[i]}" == "${flag}" ]]         && caller && echo "[ERROR]: Flag <${flag}> already registered!"             && exit 65
+        [[ "${valid_flags[${key}]}" == "${flag}" ]]             && caller && echo "[ERROR]: Flag <${flag}> already registered!"                     && exit 66
     done
 
-    for flag_name in "${valid_flag_names[@]}"; do
-        [[ "${flag_name[i]}" == "${name}" ]]    && caller && echo "[ERROR]: Flag name <${flag_name}> already registered!"   && exit 66
+    for flag_name in "${!valid_flag_names[@]}"; do
+        [[ "${valid_flag_names[${flag_name}]}" == "${name}" ]]  && caller && echo "[ERROR]: Flag name <${flag_name}> already registered!"           && exit 67
     done
+
+    [[ x"${argument}" != x"" ]] && {
+        [[ x"${argument_type}" == x"" ]]    && caller && echo "[ERROR]: Argument type must be provided for flag '${name}':'${argument}'"            && exit 68
+        [[ x"${arg_description}" == x"" ]]  && caller && echo "[ERROR]: Argument description must be provided for flag '${name}':'${argument}'"     && exit 69
+    }
 
     # register information
-    [[ "${flag}" == "-" ]] || valid_flags["${flag}"]="${name}"
+    [[ "${flag}" != "-" ]] && valid_flags["${flag}"]="${name}"
     
-    valid_flag_names+=("${name}")
-    valid_flag_names_descriptions["${name}"]="${description}"
-    # valid_flag_names_arguments["${name}"]="${argument}"
-    valid_flag_priorities["${priority}"]=${priority}
-}
+    # description="${description//\${/\\\${}"
 
-# (1: target name; 2: target description)
-function add_target () {
-    [[ ${#1} -eq 0 ]]   && caller && echo "[ERROR]: Targets cannot be empty!" && exit 50
-    valid_targets+=("$1")
-    valid_target_descriptions+=("$2")
+    local packed="'${flag}' '${description//\'/\\\'}' '${priority//\'/\\\'}' '${argument//\'/\\\'}' '${argument_type//\'/\\\'}' '${arg_description//\'/\\\'}'"
+    valid_flag_names[${name}]="${packed}"
 }
 
 # (1: flag (single character))
@@ -180,7 +173,7 @@ function validate_flag () {
     # if no valid flag matching the supplied flag is found, error
     if [[ ${valid_flag_found} -eq 0 ]]; then
         caller && echo "[ERROR]: '-${flag}' is not a valid flag."
-        # print_help
+        print_help
         exit 1
     else
         local flag_name="${valid_flags[${flag}]}"
@@ -195,7 +188,7 @@ function validate_flag_name () {
     local valid_flag_name_found=0
 
     # check if the supplied flag is valid
-    for value in "${valid_flag_names[@]}"; do
+    for value in "${!valid_flag_names[@]}"; do
         if [[ "${value}" == "${flag_name}" || "${value}" == "${flag//-/_}" ]]; then
             valid_flag_name_found=1
             break
@@ -205,11 +198,11 @@ function validate_flag_name () {
     # if no valid flag matching the supplied flag is found, error
     if [[ ${valid_flag_name_found} -eq 0 ]]; then
         caller && echo "[ERROR]: '--${flag_name}' is not a valid flag name."
-        # print_help
+        print_help
         exit 1
     else
-        # parameter expansion
-        eval "flag_name_${flag_name//-/_}"
+        local function_name="${flag_name//-/_}"
+        eval "flag_name_${function_name}"
     fi
 }
 
@@ -223,7 +216,7 @@ function validate_flags () {
     arr_pop arguments 0
 
     if [[ "${arg:1:1}" != "-" ]]; then
-        local flags=$arg
+        local flags=${arg}
         for (( i=1; i<${#flags}; i++ )); do
             validate_flag "${flags:$i:1}"
         done
@@ -259,165 +252,14 @@ function execute_flags () {
     return
 }
 
-# function print_help () {
-#     local cols=$(tput cols)
-
-#     # TODO: implement usage of flag data
-
-#     local flags=(${!valid_flag_names[@]})
-#     local flag_names=(${valid_flag_names[@]})
-
-#     local usage_flags=""
-#     local usage_targets=""
-
-#     local formatted_description=""
-#     local formatted_description_linecount=0
-
-#     # (1: description; 2: left-padding, 3: line-width)
-#     function format_description () {
-#         [[ -z "$1" ]]           && caller && echo "[ERROR]: description is empty!"                  && exit 30
-#         [[ ! $2 =~ ^[0-9]+$ ]]  && caller && echo "[ERROR]: left-padding is not a valid number!"    && exit 31
-#         [[ ! $3 =~ ^[0-9]+$ ]]  && caller && echo "[ERROR]: line width is not a valid number!"      && exit 32
-
-#         formatted_description=""
-#         formatted_description_linecount=1
-#         local description="$1"
-#         local left_padding=$( printf "%${2}s" )
-#         local line_width=$3
-
-#         local current_line=""
-
-#         IFS=' ' read -ra words <<< "$description"
-
-#         local used_left_padding="$left_padding"
-
-#         for word in "${words[@]}"; do
-#             if (( ${#used_left_padding} + ${#current_line} + ${#word} + 1 > $line_width )); then
-#                 (( ${formatted_description_linecount} == 1 )) && used_left_padding=""
-#                 formatted_description="${formatted_description}${used_left_padding}${current_line}\n"
-#                 current_line="${word}"
-#                 formatted_description_linecount=$(($formatted_description_linecount+1))
-#                 used_left_padding="$left_padding"
-#             else
-#                 if [[ -z "$current_line" ]]; then # true for i=0
-#                     current_line="$word"
-#                 else
-#                     current_line="$current_line $word"
-#                 fi
-#             fi
-#         done
-
-#         (( ${formatted_description_linecount} == 1 )) && used_left_padding=""
-#         formatted_description="${formatted_description}${used_left_padding}${current_line}\n"
-#     }
-
-#     # flag_arg_widths=()
-#     # for flag_data in "${valid_flag_data[@]}"; do
-#     #     local flag_data_parts=
-#     #     local description=
-#     #     local arguments=
-#     #     local arg_descriptions=
-
-#     #     IFS='|' read -ra flag_data_parts <<< "${flag_data}"
-
-#     #     for part in "${flag_data_parts[@]}"; do
-#     #         eval "$part"
-#     #     done
-
-#     #     for arg in "${arguments[@]}"; do
-#     #         max_flag_arg_width+=(${#arg})
-#     #     done
-#     # done
-
-
-
-#     local max_flag_width=$(     arr_max_length flag_names     \-A )
-#     # local max_flag_arg_width=$( arr_max_value flag_arg_widths )
-#     local max_target_width=$(   arr_max_length valid_targets  \-a )
-
-#     local max_width=$(($max_flag_width > $max_target_width ? $max_flag_width : $max_target_width ))
-
-#     for ((i = 0; i < ${#flags[@]}; i++)); do
-#         local flag="${flags[$i]}"
-#         local flag_name="${flag_names[$i]}"
-#         local flag_data="${valid_flag_data[$flag_name]}"
-
-#         local flag_padding=$((${#flag_name} <= $max_width ? $max_width - ${#flag_name} + 1 : 1))
-#         local flag_spaces=$(printf "%${flag_padding}s")
-
-#         local line="    -${flag}   | --${flag_name}${flag_spaces}| "
-#         echo "${flag}"
-#         [[ ${flag} == "-" ]] && line="           --${flag_name}${flag_spaces}| "
-
-#         local flag_data_parts=
-#         local description=
-#         local arguments=
-#         local arg_descriptions=
-
-#         IFS='|' read -ra flag_data_parts <<< "${flag_data}"
-
-#         for part in "${flag_data_parts[@]}"; do
-#             eval "$part"
-#         done
-
-#         format_description "${description}" ${#line} $((${cols} - 4))
-
-#         usage_flags+="${line}${formatted_description}\n"
-
-#         # for ((i = 0; i < ${#arguments}; i++)); do
-#         #     local argument="${arguments[$i]}"
-#         #     local arg_description=""
-#         #     line="$(printf "%11s") ${argument}"
-
-#         # done
-#     done
-
-#     format_description=""
-
-#     for ((i = 0; i < ${#valid_targets[@]}; i++)); do
-#         local target="${valid_targets[$i]}"
-
-#         local target_padding=$((${#target} < $max_width ? $max_width - ${#target} + 10 : 1))
-#         local target_spaces=$(printf "%${target_padding}s" " ")
-
-#         local line="    ${target}${target_spaces}| "
-
-#         format_description "${valid_target_descriptions[i]}" ${#line} $((${cols} - 4))
-        
-#         usage_targets="${usage_targets}${line}${formatted_description}\n"
-#     done
-
-#     local small_cols=$(( $cols - 8))
-#     local short_line=$(printf '%*s\n' "$small_cols" | tr ' ' '-')
-#     echo "Usage: $0 [flags, ...] <target> [target_arguments...]"
-#     echo ""
-#     echo "A helpful tool for doorbellian development"
-#     echo ""
-#     echo "Maintained by Maxine Alexander <max.alexander3721@gmail.com>"
-#     echo ""
-#     echo "----${short_line}----"
-#     echo ""
-#     local target_spaces=$(printf "%$(($max_width - 1))s" " ")
-#     echo "    flag | name${target_spaces}| description"
-#     echo "    ${short_line}"
-#     echo -e   "$usage_flags"
-#     echo "----${short_line}----"
-#     target_spaces=$(printf "%$(($max_width + 4))s" " ")
-#     echo "    target${target_spaces}| description"
-#     echo "    ${short_line}"
-#     echo -e   "$usage_targets"
-# }
-
 function is_builtin () {
     echo "n" # place-holder
 }
 
-valid_arg_types=("any" "number" "string")
-current_target=
-
-declare -a target_arguments
-declare -a target_arg_types
-declare -a target_arg_descs
+declare     current_target
+declare -a  target_arguments
+declare -a  target_arg_types
+declare -a  target_arg_descs
 
 # (1: name; 2: type; 3: description)
 function add_argument () {
@@ -432,7 +274,7 @@ function add_argument () {
         type_="any"
     }
 
-    [[ x"${name}" != x"" && x"${desc}" != x"" && ${valid_arg_tyes[@]} =~ "${type_}" ]] && {
+    [[ x"${name}" == x"" || x"${desc}" == x"" || x"${type_}" == x"" || ! ${valid_arg_types[@]} =~ "${type_}" ]] && {
         echo "add_argument usage is: 'add_argument \"<name>\" \"<${valid_arg_types[*]}>\" \"<description>\"'" >&2
         [[ ${detected_any} -eq 1 ]] && echo "(auto-detected type as \"any\")" >&2
         echo "What you provided:" >&2
@@ -493,8 +335,45 @@ function print_help () {
                     --table-wrap description 
         fi
     else # iterate through targets and collect info ; `$0 -h` or `$0 --help`
+        echo "Common Flags:"
         {
-            # echo "subcommand|name_short|name_long|type|description"
+            echo ";name;priority;argument name;argument type   ;description"
+            echo ";;;;;"
+            for flag_name in "${!valid_flag_names[@]}"; do
+            
+                # echo "${flag_name}"
+                local packed_flag_data="${valid_flag_names[${flag_name}]}"
+                # echo "${packed_flag_data}"
+                eval local flag_data=(${packed_flag_data})
+
+                #  1: flag (single character); 2: name; 3: description; 4: priority;
+                #  5: argument name; 6: argument type; 7: argument description
+                local flag="${flag_data[0]}"
+                local name="${flag_name}"
+                local description="${flag_data[1]}"
+                local priority="${flag_data[2]}"
+                local argument="${flag_data[3]}"
+                local argument_type="${flag_data[4]}"
+                local arg_description="${flag_data[5]}"
+
+                [[ "${flag}" == "-" ]] && flag="" || flag="-${flag}"
+
+                echo "${flag};${name};${priority};;;${description}"
+                [[ x"${argument}" != x"" ]] && echo ";;;${argument};${argument_type};${arg_description}"
+                echo ";;;;;"
+
+            done
+        } | column  --separator ';'                                                                             \
+                    --table                                                                                     \
+                    --output-width ${cols}                                                                      \
+                    --table-noheadings                                                                          \
+                    --table-columns "short name,long name,priority,argument name,argument type,description"     \
+                    --table-right "short name,priority"                                                         \
+                    --table-wrap description
+        
+        echo "Targets:"
+        {
+            echo ";;"
             for file in targets/*.bash; do
                 current_target="${file##*/}"
                 current_target="${current_target%.bash}"
@@ -509,14 +388,16 @@ function print_help () {
 
                 source ${file}
 
-                echo "${current_target};${description}"
-                echo ";"
+                local arg_count=${#target_arguments[@]}
+
+                echo "${current_target};${arg_count};${description}"
+                echo ";;"
             done
-        } | column                                      \
-                --separator ';'                         \
-                --table                                 \
-                --output-width ${cols}                  \
-                --table-columns subcommand,description  \
+        } | column                                                  \
+                --separator ';'                                     \
+                --table                                             \
+                --output-width ${cols}                              \
+                --table-columns "subcommand,arg count,description"  \
                 --table-wrap description 
     fi
 }
