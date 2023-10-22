@@ -408,18 +408,11 @@ function execute_flags () {
 #     echo -e   "$usage_targets"
 # }
 
-# add_flag "h" "help" "prints this menu" 0
-# function flag_h () {
-#     print_help
-#     exit 0
-# }
-
-valid_arg_tyes=("any" "number" "string")
-
 function is_builtin () {
     echo "n" # place-holder
 }
 
+valid_arg_types=("any" "number" "string")
 current_target=
 
 declare -a target_arguments
@@ -429,32 +422,38 @@ declare -a target_arg_descs
 # (1: name; 2: type; 3: description)
 function add_argument () {
     local name=$1
-    local type=$2
+    local type_=$2
     local desc=$3
 
     local detected_any=0
 
-    [[ x"${type}" == x"" ]] && type="any" && detected_any=1
-
-    [[ x"${name}" != x"" && x"${desc}" != x"" && ${valid_arg_tyes[@]} =~ "${type}" ]] && {
-        echo "add_argument usage is: 'add_argument \"<name>\" \"<${valid_arg_types[*]}>\" \"<description>\"'" >&2
-        echo "What you provided:" >&2
-        [[ ${detected_any} -eq 1 ]] && echo "(auto-detected type as \"any\")" >&2
-        echo "add_argument \"${name}\" \"${type}\" \"${desc}\""
+    [[ x"${type_}" == x"" ]] && {
+        detected_any=1
+        type_="any"
     }
 
-    local count=${#target_arguments}
+    [[ x"${name}" != x"" && x"${desc}" != x"" && ${valid_arg_tyes[@]} =~ "${type_}" ]] && {
+        echo "add_argument usage is: 'add_argument \"<name>\" \"<${valid_arg_types[*]}>\" \"<description>\"'" >&2
+        [[ ${detected_any} -eq 1 ]] && echo "(auto-detected type as \"any\")" >&2
+        echo "What you provided:" >&2
+        echo "add_argument \"${name}\" \"${type_}\" \"${desc}\"" >&2
+        exit 255
+    }
 
-    target_arguments[$count]+=("${name}")
-    target_arg_types[$count]+=("${type}")
-    target_arg_descs[$count]+=("${desc}")
+    local count=${#target_arguments[@]}
+
+    target_arguments[$count]="${name}"
+    target_arg_types[$count]="${type_}"
+    target_arg_descs[$count]="${desc}"
 }
 
 function print_help () {
+    local cols=$(tput cols)
+    cols=$(( $cols > 22 ? $cols - 1 : 20 ))
     # TODO: print help for common flags
 
     # print help for targets
-    if [[ ${#arguments[@]} -gt 0 ]]; then # subcommand provided?
+    if [[ ${#arguments[@]} -gt 0 ]]; then # `$0 --help <target>`?
         if [[ ! -f "targets/${arguments[0]}.bash" && $(is_builtin "${arguments[0]}") == "n" ]]; then
             caller
             echo "No such command '${arguments[0]}'"
@@ -464,22 +463,67 @@ function print_help () {
             # check builtin info
             return
         else
-            # source "targets/${arguments[0]}.bash"
-            return
-        fi
-    else # iterate through targets and collect info
-        for file in targets/*.bash; do
-            current_target="${file##*/}"
-            current_target="${current_target%.bash}"
+            local current_target="${arguments[0]}"
+            source "targets/${current_target}.bash"
+            arr_pop arguments 0
+
+            local arg_count=${#target_arguments[@]}
             
-            target_arguments=()
-            target_arg_types=()
-            target_arg_descs=()
+            {
+                echo "target: ${current_target};description:;${description}"
+                echo ";;"
+                echo "argument name |;argument type |;description"
+                echo ";;"
 
-            source ${file}
+                for (( i=0; i<${arg_count}; i++ )); do
+                    # TODO: include target-specific flags
+                    # echo "|-${flag_shortname}|${flag_name}||${flag_description}"
+                    # for j=0,${flag_args[@]}; do
+                    #     echo "||${flag_args[i][j]}|${flag}"
+                    # done
 
+                    echo "${target_arguments[i]};${target_arg_types[i]};${target_arg_descs[i]}"
+                done
+            } | column                                      \
+                    --separator ';'                         \
+                    --table                                 \
+                    --output-width ${cols}                  \
+                    --table-noheadings                      \
+                    --table-columns "argument name,argument type,description"  \
+                    --table-wrap description 
+        fi
+    else # iterate through targets and collect info ; `$0 -h` or `$0 --help`
+        {
+            # echo "subcommand|name_short|name_long|type|description"
+            for file in targets/*.bash; do
+                current_target="${file##*/}"
+                current_target="${current_target%.bash}"
 
-        done
+                [[ "${current_target}" == "common" ]] && continue
+
+                # echo "${current_target}" >&2
+                
+                target_arguments=()
+                target_arg_types=()
+                target_arg_descs=()
+
+                source ${file}
+
+                echo "${current_target};${description}"
+                echo ";"
+            done
+        } | column                                      \
+                --separator ';'                         \
+                --table                                 \
+                --output-width ${cols}                  \
+                --table-columns subcommand,description  \
+                --table-wrap description 
     fi
 }
-print_help
+# print_help
+
+add_flag "-" "help" "prints this menu" 0
+function flag_name_help () {
+    print_help
+    exit 0
+}
