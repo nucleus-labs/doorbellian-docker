@@ -294,6 +294,11 @@ function print_help () {
     cols=$(( $cols > 22 ? $cols - 1 : 20 ))
     # TODO: print help for common flags
 
+    echo "Usage: $0 [-<flag>[...]] [--<common flag> [...]] <target> [-<flag>[...]] [--<target-specific flag> [...]] <target argument [...]>"
+    echo "       $0 --help"
+    echo "       $0 --help <target>"
+    echo
+
     # print help for targets
     if [[ ${#arguments[@]} -gt 0 ]]; then # `$0 --help <target>`?
         if [[ ! -f "targets/${arguments[0]}.bash" && $(is_builtin "${arguments[0]}") == "n" ]]; then
@@ -358,7 +363,7 @@ function print_help () {
 
                 [[ "${flag}" == "-" ]] && flag="" || flag="-${flag}"
 
-                echo "${flag};${name};${priority};;;${description}"
+                echo "${flag};--${name};${priority};;;${description}"
                 [[ x"${argument}" != x"" ]] && echo ";;;${argument};${argument_type};${arg_description}"
                 echo ";;;;;"
 
