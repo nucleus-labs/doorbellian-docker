@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # set -x
 
-[[ ! -f "arg_parse.sh" ]] && {
-    echo "arg_parse.sh is missing! Critical dependency! Exiting..." >&2
+[[ ! -f "arg_parse.bash" ]] && {
+    echo "arg_parse.bash is missing! Critical dependency! Exiting..." >&2
     exit 255
 }
 
-source arg_parse.sh
+source arg_parse.bash
 
 [[ ! -d "targets/" ]] && {
     echo "no target directory! Nothing to run! Exiting..." >&2
@@ -26,6 +26,7 @@ source targets/common.bash
 }
 
 function init () {
+    [[ ! -f .env ]] && echo -e "\n\n\n" > .env
     source .env
     export DOCKER_BUILDKIT=1
 }
@@ -34,19 +35,16 @@ function cleanup () {
     [[ ${created_container} -eq 1 && ${persist} -eq 0 ]] && docker rm -v ${container_id} 2>&1 >/dev/null
 }
 
-function validate_dependencies () {
-
-    return
-
-}
-
 # ================================================================================================
 #                                               MAIN
 function main () {
     validate_dependencies
     init
+
     validate_flags
     execute_flags
+    scrub_flags
+    
     validate_target
     cleanup
 }

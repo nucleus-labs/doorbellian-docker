@@ -16,7 +16,7 @@ extra_args=()
 
 # ================================================================================================
 #                                            GLOBALS
-DEPENDENCIES=("tput" "cam" "lsusb" "docker" "buildg")
+DEPENDENCIES=()
 
 SCRIPT_NAME=$0
 
@@ -176,6 +176,7 @@ function exec_container () {
 add_flag "d" "debug" "enable debug mode (prints extra info)" 0
 function flag_name_debug () {
     debug_mode=1
+    caller
     debug "Enabling Debug Mode"
 }
 
