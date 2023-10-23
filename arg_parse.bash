@@ -245,7 +245,7 @@ function validate_flag_name () {
         #  4: argument name; 5: argument type; 6: argument description
         local flag_arg
         [[ x"${unpacked_flag_data[4]}" != x"" ]] && {
-            flag_arg=" ${arguments[0]}"
+            flag_arg="${arguments[0]}"
             arr_pop arguments 0
 
             local inferred_type=$(check_type "${flag_arg}")
@@ -255,7 +255,7 @@ function validate_flag_name () {
                 error $(eval echo "${ERR_INFO}") "${msg}" 255
             }
         }
-        flag_unschedule+=("'${unpacked_flag_data[3]}' 'flag_name_${function_name}${flag_arg}'")
+        flag_unschedule+=("'${unpacked_flag_data[3]}' 'flag_name_${function_name} ${flag_arg}'")
     fi
 }
 

@@ -176,7 +176,6 @@ function exec_container () {
 add_flag "d" "debug" "enable debug mode (prints extra info)" 0
 function flag_name_debug () {
     debug_mode=1
-    caller
     debug "Enabling Debug Mode"
 }
 
@@ -211,25 +210,22 @@ function flag_name_attach () {
     debug "Attaching to container [${container_id:0:8}]..."
 }
 
-add_flag "-" "tag" "sets the docker tag for the selected target" 2
+add_flag "-" "tag" "sets the docker tag for the selected target" 2 "image tag" "string" "The tag to set"
 function flag_name_tag () {
-    image_tag="${arguments[0]}"
+    image_tag="$1"
     debug "using tag '${image_tag}'"
-    arr_pop arguments 0
 }
 
-add_flag "-" "jobs" "sets the number of jobs/threads to use" 1
+add_flag "-" "jobs" "sets the number of jobs/threads to use" 1 "job count" "int" "the number of jobs/threads to use"
 function flag_name_jobs () {
     [[ ! ${JOBS} =~ ^[0-9]+$ ]] && caller && echo "[ERROR]: JOBS value '${JOBS}' is not a valid number!" && exit 15
-    JOBS=${arguments[0]}
-    arr_pop arguments 0
+    JOBS=$1
     debug "Using -j${JOBS}"
 }
 
 add_flag "-" "dockerfile" "sets the dockerfile to use" 2 "dockerfile" "string" "the dockerfile to use"
 function flag_name_dockerfile () {
-    dockerfile="modes/${arguments[0]}"
-    arr_pop arguments 0
+    dockerfile="modes/$1"
     debug "using dockerfile '${dockerfile}'"
 }
 
@@ -239,24 +235,22 @@ function flag_name_container () {
     debug "Using container [${container_id}]"
 }
 
-add_flag "-" "mode" "sets the project mode, runs \"source modes/\${mode}.bash\"" 1
+add_flag "-" "mode" "sets the project mode, runs \"source modes/\${mode}.bash\"" 1 "mode" "string" "the mode to use"
 function flag_name_mode () {
-    local mode="modes/${arguments[0]}.bash"
+    local mode="modes/$1.bash"
     [[ ! -f "${mode}" ]] && {
         echo "Could not find mode file '${mode}'" >&2
         exit 255
     }
 
     source ${mode}
-    arr_pop arguments 0
-    debug "using dockerfile:    '${dockerfile}'"
-    debug "using tag:           '${image_tag}'"
+    debug "[mode]: using dockerfile:    '${dockerfile}'"
+    debug "[mode]: using tag:           '${image_tag}'"
 }
 
-add_flag "-" "arg" "additional arguments to pass to the target, can be used multiple times" 1
+add_flag "-" "arg" "additional arguments to pass to the target, can be used multiple times" 1 "arg" "string" "the arg to pass to the target"
 function flag_name_arg () {
-    extra_args+=(${arguments[0]})
-    arr_pop arguments 0
+    extra_args+=($1)
 }
 
 add_flag "-" "no-cache" "Only functions during the build target, builds a docker image without using a cache" 2
@@ -264,9 +258,8 @@ function flag_name_no_cache () {
     extra_args+=("--no-cache")
 }
 
-add_flag "-" "stage" "docker build stage to build" 1
+add_flag "-" "stage" "docker build stage to build" 1 "build stage" "string" "the stage to build"
 function flag_name_stage () {
-    extra_args+=("--target ${arguments[0]}")
-    arr_pop arguments 0
+    extra_args+=("--target $1")
 }
 
