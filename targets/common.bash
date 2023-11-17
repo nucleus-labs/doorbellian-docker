@@ -4,7 +4,6 @@
 #                                            SETTINGS
 debug_mode=0
 dockerfile="modes/Dockerfile.default"
-JOBS=$(nproc --all)
 container_id=
 force=0
 attach=0
@@ -28,7 +27,7 @@ IFS_DEFAULT=${IFS}
 #                                             TASKS
 # (1: message to print)
 function debug () {
-    [[ ${debug_mode} -eq 1 ]] && echo $1
+    [[ ${debug_mode} -eq 1 ]] && echo $1 >&2
 }
 
 function get_container_id () {
@@ -37,10 +36,8 @@ function get_container_id () {
     [[ ${#container_ids[@]} -ge 1 ]] && container_id="${container_ids[0]}"
 
     [[ x"${container_id}" == x"" ]] && {
-        [[ ${created_container} -eq 1 ]] && {
-            echo "Houston, we have a problem" >&2 # should be impossible ; sanity check
-            exit 255
-        }
+        [[ ${created_container} -eq 1 ]] \
+            && error ${BASH_SOURCE[0]} ${LINENO} "Houston, we have a problem" 255 # should be impossible ; sanity check
         created_container=1
         container_id="$(docker create doorbellian:${image_tag})"
     }
@@ -90,7 +87,7 @@ function validate_usb_devices () {
         if [[ ! -w "${device}" && ${force} -eq 0 ]]; then
             error ${BASH_SOURCE[0]} ${LINENO} "Device '${device}' is not writable by the current user, please chown the device" 120
         elif [[ ! -w "${device}" && ${force} -eq 1 ]]; then
-            echo "Device '${device}' is not writable by the current user, please chown the device. Forcing..."
+            echo "Device '${device}' is not writable by the current user, please chown the device. Forcing..." >&2
         fi
     done
 }
@@ -101,8 +98,12 @@ function select_index_from_list () {
     [[ ! -z $1 || $1 -eq -1 ]] && default_choice=$1
     [[ ! $1 =~ ^[0-9]+$ ]] \
             && error ${BASH_SOURCE[0]} ${LINENO} "Default index is invalid!"                90
-    [[ ${auto_select} -eq 1 ]] \
-            && echo "Selecting [${list[0]}]" && return ${default_choice}
+    [[ ${auto_select} -eq 1 ]] && {
+        echo "Selecting [${list[0]}]"
+        echo "${default_choice}"
+        return
+    }
+
     shift
     local list=($*)
     echo "$(declare -p "list" 2>/dev/null)"
@@ -135,10 +136,9 @@ function run_container () {
         device_args="${device_args} --device=${dev}"
     done
 
-    if [[ -z "${device_args}" && ${force} -eq 0 ]]; then
-        echo "No video devices found. Run with -f to force run"
-        exit 3
-    fi
+    [[ -z "${device_args}" && ${force} -eq 0 ]] \
+        && error ${BASH_SOURCE[0]} ${LINENO} "No video devices found. Run with -f to force run" 3
+    
 
     __rm="--rm"
     [[ ${persist} -ne 0 ]] && __rm=""
@@ -165,7 +165,8 @@ function exec_container () {
     local container_args=$2
     local container_id="$(docker ps -a --filter \"ancestor=doorbellian:${image_tag}\" --format '{{.ID}}')"
 
-    [[ ! ${container_id} ]] && caller && echo "[ERROR]: Could not find an existing container..." && exit 10
+    [[ ! ${container_id} ]] \
+        && error ${BASH_SOURCE[0]} ${LINENO} "Could not find an existing container..." 10
 
     docker start ${container_id} >/dev/null
     docker exec -it ${container_id} ${container_cmd} ${container_args}
@@ -203,8 +204,7 @@ function flag_name_attach () {
         elif [[ ${#container_ids} -eq 1 ]]; then
             container_id="$container_ids"
         else
-            select_index_from_list 0 ${container_ids[@]}
-            container_id="${container_ids[selected_item_index]}"
+            error ${BASH_SOURCE[0]} ${LINENO} "Could not attach ; too many available containers!" 255
         fi
     fi
     debug "Attaching to container [${container_id:0:8}]..."
@@ -214,13 +214,6 @@ add_flag "-" "tag" "sets the docker tag for the selected target" 2 "image tag" "
 function flag_name_tag () {
     image_tag="$1"
     debug "using tag '${image_tag}'"
-}
-
-add_flag "-" "jobs" "sets the number of jobs/threads to use" 1 "job count" "int" "the number of jobs/threads to use"
-function flag_name_jobs () {
-    [[ ! ${JOBS} =~ ^[0-9]+$ ]] && caller && echo "[ERROR]: JOBS value '${JOBS}' is not a valid number!" && exit 15
-    JOBS=$1
-    debug "Using -j${JOBS}"
 }
 
 add_flag "-" "dockerfile" "sets the dockerfile to use" 2 "dockerfile" "string" "the dockerfile to use"
@@ -238,10 +231,8 @@ function flag_name_container () {
 add_flag "-" "mode" "sets the project mode, runs \"source modes/\${mode}.bash\"" 1 "mode" "string" "the mode to use"
 function flag_name_mode () {
     local mode="modes/$1.bash"
-    [[ ! -f "${mode}" ]] && {
-        echo "Could not find mode file '${mode}'" >&2
-        exit 255
-    }
+    [[ ! -f "${mode}" ]] \
+        && error ${BASH_SOURCE[0]} ${LINENO} "Could not find mode file '${mode}'" 255
 
     source ${mode}
     debug "[mode]: using dockerfile:    '${dockerfile}'"
@@ -256,10 +247,5 @@ function flag_name_arg () {
 add_flag "-" "no-cache" "Only functions during the build target, builds a docker image without using a cache" 2
 function flag_name_no_cache () {
     extra_args+=("--no-cache")
-}
-
-add_flag "-" "stage" "docker build stage to build" 1 "build stage" "string" "the stage to build"
-function flag_name_stage () {
-    extra_args+=("--target $1")
 }
 

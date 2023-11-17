@@ -16,7 +16,9 @@ declare -a builtin_targets
 
 valid_arg_types=("any" "int" "float" "string")
 
-BUILTIN_DEPENDENCIES=("tput" "cam" "lsusb" "docker" "buildg" "less")
+BUILTIN_DEPENDENCIES=("tput")
+IGNORE_DEPENDENCIES=0
+PRESERVE_FLAGS=0
 
 # ================================================================================================
 #                                              UTILS
@@ -71,44 +73,20 @@ function arr_pop () {
 }
 
 # ================================================================================================
-#                                            BUILT-INS
-BUILTIN_TARGETS=("help")
-
-function target_help_builtin () {
-    description="prints this menu"
-    add_argument "target" "string" "the subcommand/target to expand the help for"
-}
-function target_help () {
-    print_help 
-}
-
-# ================================================================================================
 #                                       CORE FUNCTIONALITY
 function validate_dependencies () {
+    local all_deps=(${BUILTIN_DEPENDENCIES[@]} ${DEPENDENCIES[@]})
+    local missing_deps=""
 
-    local missing_deps=()
-
-    for (( i=0; i<${#BUILTIN_DEPENDENCIES[@]}; i++ )); do
-        which "${BUILTIN_DEPENDENCIES[i]}" &> /dev/null
+    for (( i=0; i<${#all_deps[@]}; i++ )); do
+        which "${all_deps[i]}" &> /dev/null
         local _ret=$?
-        [[ ${_ret} -ne 0 ]] && missing_deps+=("${BUILTIN_DEPENDENCIES[i]}")
+        [[ ${_ret} -ne 0 ]] && missing_deps+="\n    ${all_deps[i]}"
     done
 
-    if [[ "$(declare -p DEPENDENCIES 2>/dev/null)" == "declare -A"* || "$(declare -p DEPENDENCIES 2>/dev/null)" == "declare -a"* ]]; then
-        for (( i=0; i<${#DEPENDENCIES[@]}; i++ )); do
-            which "${DEPENDENCIES[i]}" &> /dev/null
-            local _ret=$?
-            [[ ${_ret} -ne 0 ]] && missing_deps+=("${DEPENDENCIES[i]}")
-        done
-    fi
+    [[ ${#missing_deps} -gt 0 ]] \
+        && error $(eval echo "${ERR_INFO}") "Please install missing dependencies:${missing_deps}" 255
 
-    [[ ${#missing_deps[@]} -gt 0 ]] && {
-        local _deps="    ${missing_deps[0]}"
-        for (( i=1; i<${#missing_deps[@]}; i++ )); do
-            _deps+="\n    ${missing_deps[i]}"
-        done
-        error $(eval echo "${ERR_INFO}") "Please install missing dependencies:\n${_deps}" 255
-    }
 }
 
 #  1: flag (single character); 2: name; 3: description; 4: priority;
@@ -204,7 +182,7 @@ function validate_flag () {
         #  4: argument name; 5: argument type; 6: argument description
         local flag_arg
         [[ x"${unpacked_flag_data[4]}" != x"" ]] && {
-            [[ x"${arguments[0]}" == x"" ]]
+            # [[ x"${arguments[0]}" == x"" ]]
             flag_arg=" ${arguments[0]}"
             arr_pop arguments 0
 
@@ -244,7 +222,10 @@ function validate_flag_name () {
         #  0: flag (single character); 1: name; 2: description; 3: priority;
         #  4: argument name; 5: argument type; 6: argument description
         local flag_arg
-        [[ x"${unpacked_flag_data[4]}" != x"" ]] && {
+        if [[ x"${unpacked_flag_data[4]}" != x"" ]]; then
+            [[ ${#arguments[@]} -eq 0 ]] \
+                && error $(eval echo "${ERR_INFO}") "flag '${flag_name}' requires argument '${unpacked_flag_data[4]}' but wasn't provided!" 255
+
             flag_arg="${arguments[0]}"
             arr_pop arguments 0
 
@@ -254,7 +235,7 @@ function validate_flag_name () {
                     Inferred type of '${flag_arg}' is '${inferred_type}'"
                 error $(eval echo "${ERR_INFO}") "${msg}" 255
             }
-        }
+        fi
         flag_unschedule+=("'${unpacked_flag_data[3]}' 'flag_name_${function_name} ${flag_arg}'")
     fi
 }
@@ -294,51 +275,93 @@ function execute_flags () {
 }
 
 function scrub_flags () {
-    return
+    local FORCE="$1"
+
+    unset -v flag_schedule flag_unschedule
+    
+    declare -ga flag_schedule
+    declare -ga flag_unschedule
+    
+    if [[ ${PRESERVE_FLAGS} -eq 0 || x"${FORCE}" == x"force" ]]; then
+        unset -v valid_flags valid_flag_names
+
+        declare -gA valid_flags
+        declare -gA valid_flag_names
+    fi
 }
 
 function validate_target () {
     target=${arguments[0]}
     valid_target_found=0
 
+    [[ ${#arguments[@]} -eq 0 ]] && print_help && exit 0
+
     arr_pop arguments 0
 
-    [[ ! -f "targets/${target}.bash" ]] && \
+    [[ ! -f "targets/${target}.bash" && "$(is_builtin ${target})" == "n" ]] && \
         error $(eval echo "${ERR_INFO}") "Target file 'targets/${target}.bash' not found!" 255
 
-    source "targets/${target}.bash"
+    scrub_flags
 
-    [[ $(type -t "target_${target}") != "function" ]] && \
-        error $(eval echo "${ERR_INFO}") "Target function 'target_${target}' was not found in 'targets/${target}.bash'!" 255
+    [[ "$(is_builtin ${target})" == "n" ]] \
+        && source "targets/${target}.bash" \
+        || eval "target_${target//-/_}_builtin"
+    
+    validate_flags
+    execute_flags
+
+    [[ $(type -t "target_${target//-/_}") != "function" ]] && \
+        error $(eval echo "${ERR_INFO}") "Target function 'target_${target//-/_}' was not found in 'targets/${target}.bash'!" 255
 
     local target_arguments_provide=()
     for (( i=0; i<${#target_arguments[@]}; i++ )); do
         local arg_name="${target_arguments[i]}"
         local arg_type="${target_arg_types[i]}"
 
-        [[ ${#arguments[@]} -eq 0 ]] && \
-            error $(eval echo "${ERR_INFO}") "Target '${target}' requires argument '${arg_name}' but wasn't provided!" 255
-        
-        local arg="${arguments[0]}"
-        arr_pop arguments 0
+        if [[ "${arg_type}" != *... ]]; then
+            [[ ${#arguments[@]} -eq 0 ]] && \
+                error $(eval echo "${ERR_INFO}") "Target '${target}' requires argument '${arg_name}' but wasn't provided!" 255
+            
+            local arg="${arguments[0]}"
+            arr_pop arguments 0
 
-        # TYPE CHECKING
-        [[ "${arg_type}" != "any" && "${arg_type}" != "string" ]] && {
-            local inferred_type=$(check_type "${arg}")
-            [[ "${inferred_type}" != "${arg_type}" ]] && {
-                local msg="Target '${target}' argument '${arg_name}' requires type '${arg_type}'. \nInferred type of '${arg}' is '${inferred_type}'"
-                error $(eval echo "${ERR_INFO}") "${msg}" 255
+            # TYPE CHECKING
+            [[ "${arg_type}" != "any" && "${arg_type}" != "string" ]] && {
+                local inferred_type=$(check_type "${arg}")
+                [[ "${inferred_type}" != "${arg_type}" ]] && {
+                    local msg="Target '${target}' argument '${arg_name}' requires type '${arg_type}'. \nInferred type of '${arg}' is '${inferred_type}'"
+                    error $(eval echo "${ERR_INFO}") "${msg}" 255
+                }
             }
-        }
 
-        target_arguments_provide+=("\"${arg}\"")
+            target_arguments_provide+=("\"${arg}\"")
+        else # types containing '...' will consume all remaining arguments and check if they're all the same type.
+            arg_type="${arg_type%%...}"
+            local num_args=${#arguments[@]}
+            for (( i=0; i<${num_args}; i++ )); do
+                local arg="${arguments[0]}"
+                arr_pop arguments 0
+
+                # TYPE CHECKING
+                [[ "${arg_type}" != "any" && "${arg_type}" != "string" ]] && {
+                    local inferred_type=$(check_type "${arg}")
+                    [[ "${inferred_type}" != "${arg_type}" ]] && {
+                        local msg="Target '${target}' argument '${arg_name}' requires type '${arg_type}'. \nInferred type of '${arg}' is '${inferred_type}'"
+                        error $(eval echo "${ERR_INFO}") "${msg}" 255
+                    }
+                }
+
+                target_arguments_provide+=("${arg}")
+            done; break
+        fi
     done
 
-    eval "target_${target}" ${target_arguments_provide[@]}
+    eval "target_${target//-/_}" ${target_arguments_provide[@]}
 }
 
 function is_builtin () {
-    echo "n" # place-holder
+    local target_check="$1"
+    [[ ${builtin_targets[@]} =~ ${target_check} ]] && echo "y" || echo "n"
 }
 
 declare     current_target
@@ -352,21 +375,20 @@ function add_argument () {
     local type_=$2
     local desc=$3
 
-    local detected_any=0
-
-    [[ x"${type_}" == x"" ]] && {
-        detected_any=1
-        type_="any"
+    local detected_elipses=0
+    [[ "${type_}" == *... ]] && {
+        detected_elipses=1
+        type_="${type_%%...}"
     }
 
     [[ x"${name}" == x"" || x"${desc}" == x"" || x"${type_}" == x"" || ! ${valid_arg_types[@]} =~ "${type_}" ]] && {
         echo "add_argument usage is: 'add_argument \"<name>\" \"<${valid_arg_types[*]}>\" \"<description>\"'" >&2
-        [[ ${detected_any} -eq 1 ]] && echo "(auto-detected type as \"any\")" >&2
         echo "What you provided:" >&2
         echo "add_argument \"${name}\" \"${type_}\" \"${desc}\"" >&2
         exit 255
     }
 
+    [[ ${detected_elipses} -eq 1 ]] && type_="${type_}..."
     local count=${#target_arguments[@]}
 
     target_arguments[$count]="${name}"
@@ -378,31 +400,60 @@ function add_argument () {
 function print_help () {
     local cols=$(tput cols)
     cols=$(( $cols > 22 ? $cols - 1 : 20 ))
-    # TODO: print help for common flags
 
     local flag_help="$1"
     local is_flag="$2"
 
     if [[ x"${is_flag}" != x"" ]]; then
-
         return
     fi
 
     # print help for targets
-    if [[ $# -gt 0 ]]; then # `$0 --help <target>`?
+    if [[ $# -gt 0 ]]; then
+        # echo "[cmd][built-in][${flag_help}]: $(is_builtin ${flag_help})"
         if [[ ! -f "targets/${flag_help}.bash" && $(is_builtin "${flag_help}") == "n" ]]; then
-            caller >&2
-            echo "No such command '${flag_help}'"
-            exit 255
+            error $(eval echo "${ERR_INFO}") "No such command '${flag_help}'" 255
 
         elif [[ $(is_builtin "${flag_help}") == "y" ]]; then
-            # check builtin info
-            return
-        else
             local current_target="${flag_help}"
-            source "targets/${current_target}.bash"
-
+            scrub_flags
+            eval "target_${current_target}_builtin"
             local arg_count=${#target_arguments[@]}
+
+            {
+                echo ";name;priority;argument name;argument type   ;description"
+                echo ";;;;;"
+                for flag_name in "${!valid_flag_names[@]}"; do
+                
+                    # echo "${flag_name}"
+                    local packed_flag_data="${valid_flag_names[${flag_name}]}"
+                    # echo "${packed_flag_data}"
+                    eval local flag_data=(${packed_flag_data})
+
+                    #  1: flag (single character); 2: name; 3: description; 4: priority;
+                    #  5: argument name; 6: argument type; 7: argument description
+                    local flag="${flag_data[0]}"
+                    local name="${flag_name}"
+                    local description="${flag_data[2]}"
+                    local priority="${flag_data[3]}"
+                    local argument="${flag_data[4]}"
+                    local argument_type="${flag_data[5]}"
+                    local arg_description="${flag_data[6]}"
+
+                    [[ "${flag}" == "-" ]] && flag="" || flag="-${flag}"
+
+                    echo "${flag};--${name};${priority};;;${description}"
+                    [[ x"${argument}" != x"" ]] && echo ";;;${argument};${argument_type};${arg_description}"
+                    echo ";;;;;"
+
+                done
+            } | column  --separator ';'                                                                             \
+                        --table                                                                                     \
+                        --output-width ${cols}                                                                      \
+                        --table-noheadings                                                                          \
+                        --table-columns "short name,long name,priority,argument name,argument type,description"     \
+                        --table-right "short name,priority"                                                         \
+                        --table-wrap description
             
             {
                 echo "target: ${current_target};description:;${description}"
@@ -420,12 +471,83 @@ function print_help () {
                     --table-noheadings                      \
                     --table-columns "argument name,argument type,description"  \
                     --table-wrap description 
+
+        else
+            local current_target="${flag_help}"
+            
+            scrub_flags
+            description=""
+            source "targets/${current_target}.bash"
+
+            local arg_count=${#target_arguments[@]}
+
+            {
+                echo "target: ${current_target};description:;${description}"
+                echo ";;"
+                echo "argument name |;argument type |;description"
+                echo ";;"
+
+                for (( i=0; i<${arg_count}; i++ )); do
+                    echo "${target_arguments[i]};${target_arg_types[i]};${target_arg_descs[i]}"
+                done
+            } | column                                      \
+                    --separator ';'                         \
+                    --table                                 \
+                    --output-width ${cols}                  \
+                    --table-noheadings                      \
+                    --table-columns "argument name,argument type,description"  \
+                    --table-wrap description 
+
+            printf "%${cols}s\n" | tr " " "="
+
+            {
+                echo ";name;priority;argument name;argument type   ;description"
+                echo ";;;;;"
+                for flag_name in "${!valid_flag_names[@]}"; do
+                
+                    # echo "${flag_name}"
+                    local packed_flag_data="${valid_flag_names[${flag_name}]}"
+                    # echo "${packed_flag_data}"
+                    eval local flag_data=(${packed_flag_data})
+
+                    #  1: flag (single character); 2: name; 3: description; 4: priority;
+                    #  5: argument name; 6: argument type; 7: argument description
+                    local flag="${flag_data[0]}"
+                    local name="${flag_name}"
+                    local description="${flag_data[2]}"
+                    local priority="${flag_data[3]}"
+                    local argument="${flag_data[4]}"
+                    local argument_type="${flag_data[5]}"
+                    local arg_description="${flag_data[6]}"
+
+                    [[ "${flag}" == "-" ]] && flag="" || flag="-${flag}"
+
+                    echo "${flag};--${name};${priority};;;${description}"
+                    [[ x"${argument}" != x"" ]] && echo ";;;${argument};${argument_type};${arg_description}"
+                    echo ";;;;;"
+
+                done
+            } | column  --separator ';'                                                                             \
+                        --table                                                                                     \
+                        --output-width ${cols}                                                                      \
+                        --table-noheadings                                                                          \
+                        --table-columns "short name,long name,priority,argument name,argument type,description"     \
+                        --table-right "short name,priority"                                                         \
+                        --table-wrap description
+
         fi
     else # iterate through targets and collect info ; `$0 -h` or `$0 --help`
-        echo "Usage: $0 [-<flag>[...]] [--<common flag> [...]] <target> [-<flag>[...]] [--<target-specific flag> [...]] <target argument [...]>"
-        echo "       $0 --help"
-        echo "       $0 --help-flag <flag> (not yet implemented)"
-        echo "       $0 --help-target <target>"
+        echo "Main usage:"
+        echo "    $0 [common-flag [flag-argument]]... <target> [target-flag [flag-argument]]... [target argument]..."
+        echo
+        echo "Help aliases:"
+        echo "    $0"
+        echo "    $0  -h"
+        echo "    $0 --help"
+        echo "    $0   help"
+        echo
+        echo "More detailed help aliases:"
+        echo "    $0 --help-target <target>"
         echo
 
         echo "Common Flags:"
@@ -466,7 +588,7 @@ function print_help () {
         
         echo "Targets:"
         {
-            echo ";;"
+            echo ";;;"
             for file in targets/*.bash; do
                 current_target="${file##*/}"
                 current_target="${current_target%.bash}"
@@ -479,31 +601,57 @@ function print_help () {
                 target_arg_types=()
                 target_arg_descs=()
 
+                scrub_flags "force"
+                description=""
                 source ${file}
 
+                local flag_count=${#valid_flag_names[@]}
                 local arg_count=${#target_arguments[@]}
 
-                echo "${current_target};${arg_count};${description}"
-                echo ";;"
+                echo "${current_target};${flag_count};${arg_count};${description}"
+                echo ";;;"
             done
-        } | column                                                  \
-                --separator ';'                                     \
-                --table                                             \
-                --output-width ${cols}                              \
-                --table-columns "subcommand,arg count,description"  \
+        } | column                                                              \
+                --separator ';'                                                 \
+                --table                                                         \
+                --output-width ${cols}                                          \
+                --table-columns "subcommand,flag count,arg count,description"   \
                 --table-wrap description 
     fi
 }
-# print_help
 
+
+
+# ================================================================================================
+#                                            BUILT-INS
 add_flag "h" "help" "prints this menu" 0
 function flag_name_help () {
-    print_help | less
+    print_help
     exit 0
 }
 
-add_flag "-" "help-target" "prints this menu" 0 "target" "string" "prints a target-specific help with more info"
+add_flag "-" "help-target" "prints help for a specific target" 0 "target" "string" "prints a target-specific help with more info"
 function flag_name_help_target () {
-    print_help $1 | less
+    print_help $1
     exit 0
 }
+
+add_flag "-" "debug--preserve-flags" "prevents unsetting flags before loading targets" 0
+function flag_name_debug__preserve_flags () {
+    PRESERVE_FLAGS=1
+}
+
+add_flag "-" "ignore-deps" "does not perform dependency validation" 0
+function flag_name_ignore_deps () {
+    IGNORE_DEPENDENCIES=1
+}
+
+
+builtin_targets+=("help")
+function target_help_builtin () {
+    description="prints this menu"
+}
+function target_help () {
+    print_help
+}
+

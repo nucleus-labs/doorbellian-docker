@@ -1,15 +1,11 @@
 
+description="A dummy target that does nothing. Useful for testing flags."
 
-description="you are, without a doubt, the biggest dummy I've ever seen"
-
-add_argument "dummy1" "int"     "a dummy int"
-add_argument "dummy2" "float"   "a dummy float"
-add_argument "dummy3" "string"  "a dummy string"
+add_flag "-" "silly" "a very silly flag" 1 "silly-arg" "string" "a silly argument for a silly flag"
+function flag_name_silly () {
+    echo "[dummy][silly]: '$1'"
+}
 
 function target_dummy () {
-    [[ ${debug_mode} -eq 1 ]] && echo
-    echo "Hi dummy!"
-    echo "dummy1: $1"
-    echo "dummy2: $2"
-    echo "dummy3: $3"
+    return
 }
