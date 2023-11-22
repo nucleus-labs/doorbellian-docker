@@ -4,8 +4,10 @@
   inputs.devshell.url = "github:numtide/devshell";
   inputs.flake-parts.url = "github:hercules-ci/flake-parts";
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/release-23.05";
+  inputs.nucleus.url = "github:nucleus-labs/nix-flake";
+  inputs.dtc.url = "github:MaxTheMooshroom/dtc/dev";
 
-  outputs = inputs@{ self, flake-parts, devshell, nixpkgs }:
+  outputs = inputs@{ self, flake-parts, devshell, nixpkgs, nucleus, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
       imports = [
         devshell.flakeModule
@@ -19,9 +21,26 @@
         "x86_64-linux"
       ];
 
-      perSystem = { pkgs, ... }: {
+      perSystem = { pkgs, system, ... }: {
+        _module.args.pkgs = import nixpkgs {
+          inherit system;
+          overlays = [
+            devshell.overlays.default
+          ];
+
+          config.permittedInsecurePackages = [
+            "python-2.7.18.6"
+          ];
+        };
+
         devshells.default = {
+          imports = [
+            "${pkgs.devshell.extraModulesDir}/language/c.nix"
+          ];
+
           packages = with pkgs; [
+            automake
+            autoconf
             gnumake
             bc
             binutils
@@ -29,14 +48,68 @@
             elfutils.dev
             file
             flock
-            gcc
-            openssl.dev
-            ncurses.dev
+            flex
+            #openssl.dev
             perl
             rsync
             unzip
             wget
             which
+            help2man
+            tree
+            zlib
+            python
+          ];
+
+          language.c = {
+            compiler = pkgs.gcc;
+
+            includes = with pkgs; [
+              ncurses.dev
+              zlib
+              zlib.static
+              openssl
+            ];
+
+            libraries = with pkgs; [
+              zlib.static
+              ncurses
+            ];
+          };
+
+          commands = [
+            {
+              category = "tools";
+              package = nucleus.packages.${system}.buildg;
+            }
+            {
+              category = "tools";
+              package = pkgs.lazydocker;
+            }
+            {
+              category = "tools";
+              # package = pkgs.libcamera;
+              name = "cam";
+              command = "${pkgs.libcamera}/bin/cam -l $@";
+            }
+            {
+              category = "tools";
+              package = pkgs.tree;
+            }
+          ];
+        
+          env = [
+            # {
+            #   name = "LD_LIBRARY_PATH";
+            #   unset = true;
+            # }
+            {
+              name = "PATH";
+              prefix = "";
+            }
+            { name = "INCLUDE_PATH"; eval = "$C_INCLUDE_PATH"; }
+            { name = "INCLUDE"; eval = "$C_INCLUDE_PATH"; }
+            { name = "LIBRARY_PATH"; eval = "$LD_LIBRARY_PATH"; }
           ];
         };
 
