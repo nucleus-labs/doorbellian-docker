@@ -172,6 +172,18 @@ function exec_container () {
     docker exec -it ${container_id} ${container_cmd} ${container_args}
 }
 
+# (1: directory; 2: filename; 3: google-drive file-id)
+function gdown () { # google download ; large file support
+    local filedir=$1
+    local filename=$2
+    local id=$3
+
+    local confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate "https://docs.google.com/uc?export=download&id=${id}" -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')
+    wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=${confirm}&id=${id}" -O "${filename}"
+    mv ${filename} ${filedir}/${filename}
+    rm -rf /tmp/cookies.txt
+}
+
 # ================================================================================================
 #                                              FLAGS
 add_flag "d" "debug" "enable debug mode (prints extra info)" 0

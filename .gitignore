@@ -7,6 +7,7 @@ build.tina
 flake.nix
 flake.lock
 highlight.css
+linux-tina/
 deps/build/tina/dl.tar
 deps/build/tina/prebuilt.tar.gz
 deps/build/tina/gcc-linaro-7.2.1-2017.11-x86_64_arm-linux-gnueabi.tar.xz

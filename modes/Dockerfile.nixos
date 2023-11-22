@@ -1,0 +1,7 @@
+FROM nixos/nix as fetch_stage
+
+RUN nix-channel --update
+
+# ADD ...
+
+# RUN ...
