@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# set -x
 
 [[ ! -f "arg_parse.bash" ]] && {
     echo "arg_parse.bash is missing! Critical dependency! Exiting..." >&2
@@ -20,32 +19,26 @@ source arg_parse.bash
 
 source targets/common.bash
 
-[[ ! -d "modes/" ]] && {
-    echo "Modes folder missing! Critical dependency! Exiting..." >&2
-    exit 255
-}
-
 function init () {
     [[ ! -f .env ]] && echo -e "\n\n\n" > .env
     source .env
-    export DOCKER_BUILDKIT=1
 }
 
 function cleanup () {
-    [[ ${created_container} -eq 1 && ${persist} -eq 0 ]] && docker rm -v ${container_id} 2>&1 >/dev/null
+    return
 }
 
 # ================================================================================================
 #                                               MAIN
 function main () {
-    validate_dependencies
     init
 
     validate_flags
     execute_flags
-    scrub_flags
-    
+
+    [[ ${IGNORE_DEPENDENCIES} -eq 0 ]] && validate_dependencies
     validate_target
+
     cleanup
 }
 
