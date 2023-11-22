@@ -1,7 +1,7 @@
 
 description="build the docker image"
 
-JOBS=$(nproc --all)
+JOBS=1
 
 add_flag "-" "stage" "docker build stage to build" 1 "build stage" "string" "the stage to build"
 function flag_name_stage () {

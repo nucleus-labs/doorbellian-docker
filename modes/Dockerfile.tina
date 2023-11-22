@@ -64,7 +64,7 @@ RUN     apt-get update          \
             libtool             \
     &&  update-ca-certificates
 
-FROM build_stage_init AS build_stage_tina
+FROM build_stage_init AS build_stage_init_tina
 
 # ENV PATH=$PATH:/usr/local/bin/m4
 
@@ -78,7 +78,7 @@ WORKDIR /builds/linux-tina
 COPY ./deps/build/tina/prebuilt.tar.gz                                          /builds/linux-tina/prebuilt.tar.gz
 COPY ./deps/build/tina/dl.tar                                                   /builds/linux-tina/dl.tar
 COPY ./deps/build/tina/riscv64-linux-x86_64-20200528.tar.xz                     /builds/linux-tina/lichee/brandy-2.0/tools/toolchain/riscv64-linux-x86_64-20200528.tar.xz
-COPY ./deps/build/tina/gcc-linaro-7.2.1-2017.11-x86_64_arm-linux-gnueabi.tar.xz /builds/linux-tina/lichee/brandy-2.0/tools/toolchain/gcc-linaro-7.2.1-2017.11-x86_64_arm-linux-gnueabi.tar.xz
+# COPY ./deps/build/tina/gcc-linaro-7.2.1-2017.11-x86_64_arm-linux-gnueabi.tar.xz /builds/linux-tina/lichee/brandy-2.0/tools/toolchain/gcc-linaro-7.2.1-2017.11-x86_64_arm-linux-gnueabi.tar.xz
 
 RUN     tar xzvf prebuilt.tar.gz    \
     &&  tar xvf dl.tar              \
@@ -90,10 +90,11 @@ ENV CROSS_COMPILE=riscv64-unknown-linux-gnu-
 # ENV LDFLAGS=--static
 
 RUN     mkdir -p /artifacts/tina/logs
-
-ARG JOBS=1
-
+ARG     JOBS=1
 ADD     deps/build/tina/build-tina.sh   /builds/linux-tina/build.sh
+
+FROM build_stage_init_tina as build_stage_tina
+
 RUN     chmod +x build.sh                   \
     &&  ./build.sh 2>&1 | tee /artifacts/tina/logs/build.tina
 
@@ -133,88 +134,6 @@ RUN     go build .
 
 RUN     cp mediamtx /artifacts/mediamtx
 
-# FROM build_stage_mediamtx AS build_stage_ffdeps
-
-# COPY    --from=FETCH_STAGE  /sources/ffmpeg     /builds/ffmpeg
-# ENV CCPREFIX="riscv64-unknown-linux-gnu-"
-# ENV CC=${CCPREFIX}gcc
-# RUN mkdir -p /builds/ffmpeg/deps/lib /builds/ffmpeg/deps/include
-# ENV PATH=${PATH}:/builds/ffmpeg/deps
-
-# COPY    --from=fetch_stage  /sources/libgsm     /builds/ffdeps/libgsm
-
-# RUN     cp -r /builds/ffdeps/libgsm/inc /builds/ffmpeg/deps/include/gsm
-
-# RUN     cd /builds/ffdeps/libgsm                            \
-#     &&  make -j$(( ${JOBS} + 1 )) CC=${CCPREFIX}gcc         \
-#     &&  cp lib/libgsm.a /builds/ffmpeg/deps/lib/libgsm.a
-
-
-# COPY --from=fetch_stage /sources/opencore-amr-0.1.6 /builds/ffdeps/opencore-amr
-# COPY        deps/build/opencore-am/configure.ac /builds/ffdeps/opencore-amr/configure.ac
-
-# WORKDIR /builds/ffdeps/opencore-amr
-
-# RUN     cp -r /builds/ffdeps/opencore-amr/amrnb  /builds/ffmpeg/deps/include/opencore-amrnb         \
-#     &&  ./configure                                                                                 \
-#             --enable-static                                                                         \
-#             --host=riscv64-unknown-linux-gnu                                                        \
-#             --prefix=/builds/ffmpeg/deps                                                            \
-#         | tee -a /artifacts/tina/logs/build.opencore-amr                                            \
-#     &&  make -j$(( ${JOBS} + 1 )) install 2>&1 | tee -a /artifacts/tina/logs/build.opencore-amr     \
-#     \
-#     &&  mv /builds/ffmpeg/deps/lib/libopencore-amrnb.a /builds/ffmpeg/deps/lib/opencore-amrnb.a     \
-#     &&  mv /builds/ffmpeg/deps/lib/libopencore-amrwb.a /builds/ffmpeg/deps/lib/opencore-amrwb.a
-
-# LIBVPX DOES NOT CURRENTLY SUPPORT RISCV
-# COPY    --from=fetch_stage /sources/libvpx /builds/ffdeps/libvpx
-
-# WORKDIR /builds/ffdeps/libvpx
-
-# ...
-
-
-
-
-
-# FROM build_stage_ffdeps AS build_stage
-
-# WORKDIR /builds/ffmpeg
-
-# RUN     ./configure                                             \
-#             --disable-doc                                       \
-#             --disable-runtime-cpudetect                         \
-#             --disable-ffplay                                    \
-#             --disable-ffprobe                                   \
-#             --arch=riscv64                                      \
-#             --target-os=linux                                   \
-#             --cross-prefix=${CROSS_COMPILE}                     \
-#             --enable-gpl                                        \
-#             --enable-version3                                   \
-#             --enable-static                                     \
-#             --disable-shared                                    \
-#             --disable-libfdk_aac                                \
-#             --disable-libvpx                                    \
-#             --enable-libx264                                    \
-#             --enable-libx265                                    \
-#             --enable-nonfree                                    \
-#             --enable-libopencore-amrnb                          \
-#             --enable-libopencore-amrwb                          \
-#             --enable-libgsm                                     \
-#             --enable-libxvid                                    \
-#             --extra-ldflags=-L/builds/ffmpeg/deps/lib           \
-#             --extra-cflags=-I/builds/ffmpeg/deps/include        \
-#             --extra-cxxflags=-I/builds/ffmpeg/include           \
-#     &&  make -j$(( ${JOBS} + 1)) \
-    # || return 0
-    # && :
-
-# RUN     mkdir -p /artifacts/ffmpeg                              \
-#     &&  cp /builds/ffmpeg/ffmpeg    /artifacts/ffmpeg/ffmpeg    \
-#     &&  cp /builds/ffmpeg/ffmpeg_g  /artifacts/ffmpeg/ffmpeg_g  \
-#     &&  cp /builds/ffmpeg/ffprobe   /artifacts/ffmpeg/ffprobe   \
-#     &&  cp /builds/ffmpeg/ffprobe_g /artifacts/ffmpeg/ffprobe_g
-
 
 FROM build_stage AS disk_stage
 
@@ -233,14 +152,14 @@ RUN     /bin/bash -c "                                  \
             &&  mkrootfs_squashfs4                      \
             &&  mboot                                   \
             &&  pack                                    \
-        " 2>&1 | tee /artifacts/tina/logs/build.muboot
+        " 2>&1 | tee /artifacts/tina/logs/build.mboot
 
 RUN     mkdir -p /artifacts/tina/u-boot/ /artifacts/tina/dts /artifacts/tina/out
 RUN     cp /builds/linux-tina/lichee/linux-5.4/arch/riscv/boot/dts/sunxi/*?.dt*? /artifacts/tina/dts/
-RUN     cp /builds/linux-tina/out/d1-mq_pro/*?.img /artifacts/tina/out/ \
-    &&  cp /builds/linux-tina/out/d1-mq_pro/*?.bin /artifacts/tina/out/ \
-    &&  cp /builds/linux-tina/out/d1-mq_pro/d1-mq_pro-uImage /artifacts/tina/out/d1-mq_pro-uImage
-RUN     cp /builds/linux-tina/lichee/brandy-2.0/u-boot-2018/u-boot*? /artifacts/tina/u-boot/
+# RUN     cp /builds/linux-tina/out/d1-mq_pro/*?.img /artifacts/tina/out/ \
+#     &&  cp /builds/linux-tina/out/d1-mq_pro/*?.bin /artifacts/tina/out/ \
+#     &&  cp /builds/linux-tina/out/d1-mq_pro/d1-mq_pro-uImage /artifacts/tina/out/d1-mq_pro-uImage
+# RUN     cp /builds/linux-tina/lichee/brandy-2.0/u-boot-2018/u-boot*? /artifacts/tina/u-boot/
 
 
 FROM ubuntu:22.04 AS run_stage
