@@ -194,8 +194,8 @@ function flag_name_debug () {
 
 add_flag "f" "force" "run even if no camera devices are found" 1
 function flag_name_force () {
-    debug "forcing..."
     force=1
+    debug "forcing..."
 }
 
 add_flag "p" "persistent" "container should persist after use" 1
@@ -254,10 +254,5 @@ function flag_name_mode () {
 add_flag "-" "arg" "additional arguments to pass to the target, can be used multiple times" 1 "arg" "string" "the arg to pass to the target"
 function flag_name_arg () {
     extra_args+=($1)
-}
-
-add_flag "-" "no-cache" "Only functions during the build target, builds a docker image without using a cache" 2
-function flag_name_no_cache () {
-    extra_args+=("--no-cache")
 }
 

@@ -17,7 +17,6 @@ declare -a builtin_targets
 valid_arg_types=("any" "int" "float" "string")
 
 BUILTIN_DEPENDENCIES=("tput")
-IGNORE_DEPENDENCIES=0
 PRESERVE_FLAGS=0
 
 # ================================================================================================
@@ -81,11 +80,11 @@ function validate_dependencies () {
     for (( i=0; i<${#all_deps[@]}; i++ )); do
         which "${all_deps[i]}" &> /dev/null
         local _ret=$?
-        [[ ${_ret} -ne 0 ]] && missing_deps+="\n    ${all_deps[i]}"
+        [[ ${_ret} -ne 0 ]] && missing_deps+="\n    ${missing_deps[i]}"
     done
 
     [[ ${#missing_deps} -gt 0 ]] \
-        && error $(eval echo "${ERR_INFO}") "Please install missing dependencies:${missing_deps}" 255
+        && error $(eval echo "${ERR_INFO}") "Please install missing dependencies:${missing_deps}\n" 255
 
 }
 
@@ -305,58 +304,38 @@ function validate_target () {
 
     [[ "$(is_builtin ${target})" == "n" ]] \
         && source "targets/${target}.bash" \
-        || eval "target_${target//-/_}_builtin"
+        || eval "target_${target}_builtin"
     
     validate_flags
     execute_flags
 
-    [[ $(type -t "target_${target//-/_}") != "function" ]] && \
-        error $(eval echo "${ERR_INFO}") "Target function 'target_${target//-/_}' was not found in 'targets/${target}.bash'!" 255
+    [[ $(type -t "target_${target}") != "function" ]] && \
+        error $(eval echo "${ERR_INFO}") "Target function 'target_${target}' was not found in 'targets/${target}.bash'!" 255
 
     local target_arguments_provide=()
     for (( i=0; i<${#target_arguments[@]}; i++ )); do
         local arg_name="${target_arguments[i]}"
         local arg_type="${target_arg_types[i]}"
 
-        if [[ "${arg_type}" != *... ]]; then
-            [[ ${#arguments[@]} -eq 0 ]] && \
-                error $(eval echo "${ERR_INFO}") "Target '${target}' requires argument '${arg_name}' but wasn't provided!" 255
-            
-            local arg="${arguments[0]}"
-            arr_pop arguments 0
+        [[ ${#arguments[@]} -eq 0 ]] && \
+            error $(eval echo "${ERR_INFO}") "Target '${target}' requires argument '${arg_name}' but wasn't provided!" 255
+        
+        local arg="${arguments[0]}"
+        arr_pop arguments 0
 
-            # TYPE CHECKING
-            [[ "${arg_type}" != "any" && "${arg_type}" != "string" ]] && {
-                local inferred_type=$(check_type "${arg}")
-                [[ "${inferred_type}" != "${arg_type}" ]] && {
-                    local msg="Target '${target}' argument '${arg_name}' requires type '${arg_type}'. \nInferred type of '${arg}' is '${inferred_type}'"
-                    error $(eval echo "${ERR_INFO}") "${msg}" 255
-                }
+        # TYPE CHECKING
+        [[ "${arg_type}" != "any" && "${arg_type}" != "string" ]] && {
+            local inferred_type=$(check_type "${arg}")
+            [[ "${inferred_type}" != "${arg_type}" ]] && {
+                local msg="Target '${target}' argument '${arg_name}' requires type '${arg_type}'. \nInferred type of '${arg}' is '${inferred_type}'"
+                error $(eval echo "${ERR_INFO}") "${msg}" 255
             }
+        }
 
-            target_arguments_provide+=("\"${arg}\"")
-        else # types containing '...' will consume all remaining arguments and check if they're all the same type.
-            arg_type="${arg_type%%...}"
-            local num_args=${#arguments[@]}
-            for (( i=0; i<${num_args}; i++ )); do
-                local arg="${arguments[0]}"
-                arr_pop arguments 0
-
-                # TYPE CHECKING
-                [[ "${arg_type}" != "any" && "${arg_type}" != "string" ]] && {
-                    local inferred_type=$(check_type "${arg}")
-                    [[ "${inferred_type}" != "${arg_type}" ]] && {
-                        local msg="Target '${target}' argument '${arg_name}' requires type '${arg_type}'. \nInferred type of '${arg}' is '${inferred_type}'"
-                        error $(eval echo "${ERR_INFO}") "${msg}" 255
-                    }
-                }
-
-                target_arguments_provide+=("${arg}")
-            done; break
-        fi
+        target_arguments_provide+=("\"${arg}\"")
     done
 
-    eval "target_${target//-/_}" ${target_arguments_provide[@]}
+    eval "target_${target}" ${target_arguments_provide[@]}
 }
 
 function is_builtin () {
@@ -375,20 +354,21 @@ function add_argument () {
     local type_=$2
     local desc=$3
 
-    local detected_elipses=0
-    [[ "${type_}" == *... ]] && {
-        detected_elipses=1
-        type_="${type_%%...}"
+    local detected_any=0
+
+    [[ x"${type_}" == x"" ]] && {
+        detected_any=1
+        type_="any"
     }
 
-    [[ x"${name}" == x"" || x"${desc}" == x"" || x"${type_}" == x"" || ! ${valid_arg_types[@]} =~ "${type_}" ]] && {
+    [[ x"${name}" == x"" || x"${desc}" == x"" || ! ${valid_arg_types[@]} =~ "${type_}" ]] && {
         echo "add_argument usage is: 'add_argument \"<name>\" \"<${valid_arg_types[*]}>\" \"<description>\"'" >&2
+        [[ ${detected_any} -eq 1 ]] && echo "(auto-detected type as \"any\")" >&2
         echo "What you provided:" >&2
         echo "add_argument \"${name}\" \"${type_}\" \"${desc}\"" >&2
         exit 255
     }
 
-    [[ ${detected_elipses} -eq 1 ]] && type_="${type_}..."
     local count=${#target_arguments[@]}
 
     target_arguments[$count]="${name}"
@@ -476,7 +456,6 @@ function print_help () {
             local current_target="${flag_help}"
             
             scrub_flags
-            description=""
             source "targets/${current_target}.bash"
 
             local arg_count=${#target_arguments[@]}
@@ -602,7 +581,6 @@ function print_help () {
                 target_arg_descs=()
 
                 scrub_flags "force"
-                description=""
                 source ${file}
 
                 local flag_count=${#valid_flag_names[@]}
@@ -639,11 +617,6 @@ function flag_name_help_target () {
 add_flag "-" "debug--preserve-flags" "prevents unsetting flags before loading targets" 0
 function flag_name_debug__preserve_flags () {
     PRESERVE_FLAGS=1
-}
-
-add_flag "-" "ignore-deps" "does not perform dependency validation" 0
-function flag_name_ignore_deps () {
-    IGNORE_DEPENDENCIES=1
 }
 
 
