@@ -156,7 +156,8 @@ function run_container () {
         -p 8888:8888                        \
         -p 8889:8889                        \
         \
-        doorbellian:${image_tag} ${container_cmd} ${container_args}
+        --entrypoint="${container_cmd}"     \
+        doorbellian:${image_tag} ${container_args}
 }
 
 # (1: container command; 2: container command arguments)
@@ -169,7 +170,7 @@ function exec_container () {
         && error ${BASH_SOURCE[0]} ${LINENO} "Could not find an existing container..." 10
 
     docker start ${container_id} >/dev/null
-    docker exec -it ${container_id} ${container_cmd} ${container_args}
+    docker exec -it --entrypoint="${container_cmd}" ${container_id} ${container_args}
 }
 
 # (1: directory; 2: filename; 3: google-drive file-id)

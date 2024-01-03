@@ -1,6 +1,14 @@
 
 
-description="clean out the related containers and images, and dangling images"
+description="clean out containers and images, and dangling images related to doorbellian's active tag"
+
+PURGE=0
+
+add_flag '-' "purge" "clean ALL doorbellian docker materials from the system." 0
+function flag_name_purge () {
+    PURGE=1
+    debug "cleaning all images"
+}
 
 function target_clean () {
     debug "stopping containers..."
@@ -12,6 +20,10 @@ function target_clean () {
         [[ ! -z "${image_tag}" ]] && docker image rm --force doorbellian:${image_tag} || docker image rm --force doorbellian
     fi
     docker images -f "dangling=true" --format "{{.ID}}" | xargs -r docker rmi
-    docker system prune -f --filter "ancestor=doorbellian:${image_tag}" 2> /dev/null
+    if [[ ${PURGE} -eq 0 ]]; then
+        docker system prune -f --filter "label=purpose=doorbellian" --filter "label=_tag=${image-tag}" 2> /dev/null
+    else
+        docker system prune -f --filter "label=purpose=doorbellian" 2> /dev/null
+    fi
     debug "cleaned."
 }

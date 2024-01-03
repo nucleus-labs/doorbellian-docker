@@ -21,6 +21,15 @@ PRESERVE_FLAGS=0
 
 # ================================================================================================
 #                                              UTILS
+function call_stack () {
+    local i
+    local stack_size=${#FUNCNAME[@]}
+    echo "Call stack:" >&2
+    for ((i=1; i < stack_size; i++)); do
+        echo "  ->  ${FUNCNAME[$i]} called at ${BASH_SOURCE[$i]}:${BASH_LINENO[$i-1]}" >&2
+    done
+}
+
 ERR_INFO="\${BASH_SOURCE[0]} \${LINENO}"
 # (1: file; 2: line number; 3: error message; 4: exit code)
 function error () {
@@ -28,9 +37,11 @@ function error () {
     local line_number="$2"
     local message="$3"
     local code="${4:-1}"
-    [[ -n "$message" ]] && echo -e "[ERROR][${file}:${line_number}][${code}]: ${message}" || echo "[ERROR][${file}][${line_number}][${code}]"
+    [[ -n "$message" ]] && echo -e "[ERROR][${file}:${line_number}][${code}]: ${message}" >&2 || echo "[ERROR][${file}][${line_number}][${code}]" >&2
+    call_stack
     exit ${code}
 }
+# alias error="_error \${BASH_SOURCE[0]} \${LINENO}"
 
 # (1: array name (global); 2: array type (-a/-A))
 function arr_max_value () {
@@ -539,6 +550,7 @@ function print_help () {
                 local packed_flag_data="${valid_flag_names[${flag_name}]}"
                 # echo "${packed_flag_data}"
                 eval local flag_data=(${packed_flag_data})
+                echo "fd: ${packed_flag_data}" >&2
 
                 #  1: flag (single character); 2: name; 3: description; 4: priority;
                 #  5: argument name; 6: argument type; 7: argument description
